@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}HDFS Gateway{% endblock %} - Apache Hadoop File Gateway</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand-header">
+        <div class="brand-icon">
+          <i data-lucide="hard-drive" style="width: 20px; height: 20px;"></i>
+        </div>
+        <div>
+          <div class="brand-title">HDFS Gateway</div>
+          <div class="brand-subtitle">Hadoop Management</div>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <div class="nav-item {% if page == 'dashboard' %}active{% endif %}">
+          <a href="/dashboard">
+            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
+            <span>Dashboard</span>
+          </a>
+        </div>
+        <div class="nav-item {% if page == 'files' %}active{% endif %}">
+          <a href="/files">
+            <i data-lucide="folder-tree" style="width: 18px; height: 18px;"></i>
+            <span>Files</span>
+          </a>
+        </div>
+        <div class="nav-item {% if page == 'upload' %}active{% endif %}">
+          <a href="/upload">
+            <i data-lucide="upload-cloud" style="width: 18px; height: 18px;"></i>
+            <span>Upload</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-widget">
+          <div>
+            <div class="status-label">HDFS Status</div>
+            <div style="font-size: 0.825rem; font-weight: 500; margin-top: 0.15rem;">
+              {{ stats.hdfs_status if stats else 'Checking...' }}
+            </div>
+          </div>
+          {% if stats and stats.hdfs_connected %}
+            <span class="status-dot connected" title="HDFS Connected"></span>
+          {% else %}
+            <span class="status-dot unavailable" title="HDFS Unavailable"></span>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Container -->
+    <main class="main-content">
+      <header class="content-header">
+        <div>
+          <h1 class="page-title">{% block page_title %}Dashboard{% endblock %}</h1>
+          <p class="page-subtitle">{% block page_subtitle %}FastAPI gateway for Apache Hadoop HDFS{% endblock %}</p>
+        </div>
+        <div>
+          {% block header_actions %}{% endblock %}
+        </div>
+      </header>
+
+      <div class="content-body">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <!-- Global Delete Confirmation Modal -->
+  <div id="delete-modal" class="modal-backdrop">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <i data-lucide="alert-triangle" style="width: 22px; height: 22px; color: var(--danger);"></i>
+        <span id="modal-title">Delete this file?</span>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete <strong id="delete-modal-filename" style="color: var(--text);"></strong>?</p>
+        <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--danger);">
+          This will permanently remove the file from Apache Hadoop HDFS.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button type="button" id="delete-modal-confirm" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications Container -->
+  <div id="toast-container"></div>
+
+  <!-- Application Logic -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

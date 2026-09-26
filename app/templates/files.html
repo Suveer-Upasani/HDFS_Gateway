@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Files - HDFS Gateway{% endblock %}
+{% block page_title %}Files Manager{% endblock %}
+{% block page_subtitle %}Explore and manage files stored in Hadoop HDFS{% endblock %}
+
+{% block header_actions %}
+<div style="display: flex; gap: 0.75rem;">
+  <button type="button" class="btn btn-secondary btn-sm" onclick="window.location.reload()">
+    <i data-lucide="refresh-cw" style="width: 15px; height: 15px;"></i>
+    Refresh
+  </button>
+  <a href="/upload" class="btn btn-primary btn-sm">
+    <i data-lucide="upload" style="width: 15px; height: 15px;"></i>
+    Upload File
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Search and Filter Bar -->
+<div class="filter-bar">
+  <div class="search-wrapper">
+    <i data-lucide="search" class="search-icon" style="width: 16px; height: 16px;"></i>
+    <input 
+      type="text" 
+      id="file-search-input" 
+      class="form-input" 
+      placeholder="Search files by name..." 
+      autocomplete="off"
+    >
+  </div>
+  <div>
+    <span class="badge badge-neutral">
+      Path: <code style="font-family: var(--font-mono); margin-left: 0.25rem;">{{ stats.upload_path }}</code>
+    </span>
+  </div>
+</div>
+
+<!-- Files Table Card -->
+<div class="card">
+  <div class="table-container" style="border: none;">
+    {% if files %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Size</th>
+          <th>Owner / Group</th>
+          <th>Modified</th>
+          <th>HDFS Path</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in files %}
+        <tr data-filename="{{ file.name }}">
+          <td>
+            <div class="cell-filename">
+              {% if file.is_dir %}
+                <i data-lucide="folder" style="width: 16px; height: 16px; color: var(--warning);"></i>
+              {% else %}
+                <i data-lucide="file" style="width: 16px; height: 16px; color: var(--accent);"></i>
+              {% endif %}
+              <span style="font-weight: 500;">{{ file.name }}</span>
+            </div>
+          </td>
+          <td class="cell-size">{{ file.size_formatted }}</td>
+          <td style="color: var(--text-muted); font-size: 0.8rem;">{{ file.owner }}</td>
+          <td style="color: var(--text-muted); font-size: 0.8rem; white-space: nowrap;">{{ file.modified }}</td>
+          <td class="cell-path">{{ file.path }}</td>
+          <td>
+            <div class="table-actions">
+              {% if not file.is_dir %}
+              <a href="/api/files/{{ file.name }}" class="btn btn-icon" title="Download {{ file.name }}">
+                <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+              </a>
+              {% endif %}
+              <button 
+                type="button" 
+                class="btn btn-icon btn-icon-danger" 
+                title="Delete {{ file.name }}" 
+                onclick="openDeleteModal('{{ file.name }}')"
+              >
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        <!-- Hidden row for search no results -->
+        <tr id="no-search-results" style="display: none;">
+          <td colspan="6" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+            <i data-lucide="search-x" style="width: 28px; height: 28px; margin-bottom: 0.5rem; display: block; margin-inline: auto;"></i>
+            No files matched your search query.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">
+        <i data-lucide="folder-open" style="width: 48px; height: 48px;"></i>
+      </div>
+      <h3 class="empty-title">No files found</h3>
+      <p class="empty-desc">There are no files currently located in the HDFS upload directory.</p>
+      {% if stats.hdfs_connected %}
+        <a href="/upload" class="btn btn-primary">
+          <i data-lucide="upload" style="width: 16px; height: 16px;"></i>
+          Upload File
+        </a>
+      {% else %}
+        <div class="badge badge-danger">HDFS is offline. Connect HDFS to view files.</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

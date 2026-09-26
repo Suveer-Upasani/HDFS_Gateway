@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - HDFS Gateway{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}FastAPI gateway for Apache Hadoop HDFS{% endblock %}
+
+{% block header_actions %}
+<div style="display: flex; gap: 0.75rem; align-items: center;">
+  {% if stats.hdfs_connected %}
+    <span class="badge badge-success">
+      <span class="status-dot connected"></span>
+      HDFS Connected
+    </span>
+  {% else %}
+    <span class="badge badge-danger">
+      <span class="status-dot unavailable"></span>
+      HDFS Unavailable
+    </span>
+  {% endif %}
+  <a href="/upload" class="btn btn-primary btn-sm">
+    <i data-lucide="plus" style="width: 15px; height: 15px;"></i>
+    Upload File
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Storage Overview Cards -->
+<section>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span>Total Files</span>
+        <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+      </div>
+      <div class="stat-value">{{ stats.total_files }}</div>
+      <div class="stat-subtext">HDFS Upload Directory</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span>Total Storage</span>
+        <i data-lucide="database" style="width: 16px; height: 16px;"></i>
+      </div>
+      <div class="stat-value">{{ stats.total_storage }}</div>
+      <div class="stat-subtext">Aggregated File Size</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span>HDFS Status</span>
+        <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
+      </div>
+      <div class="stat-value" style="font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
+        {% if stats.hdfs_connected %}
+          <span class="status-dot connected"></span>
+          <span style="color: var(--success);">Connected</span>
+        {% else %}
+          <span class="status-dot unavailable"></span>
+          <span style="color: var(--danger);">Unavailable</span>
+        {% endif %}
+      </div>
+      <div class="stat-subtext">Cluster NameNode</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span>API Status</span>
+        <i data-lucide="zap" style="width: 16px; height: 16px;"></i>
+      </div>
+      <div class="stat-value" style="font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
+        <span class="status-dot online"></span>
+        <span style="color: var(--success);">Online</span>
+      </div>
+      <div class="stat-subtext">FastAPI Web Engine</div>
+    </div>
+  </div>
+</section>
+
+<!-- Warning banner if HDFS is unavailable -->
+{% if not stats.hdfs_connected %}
+<div class="alert alert-warning">
+  <i data-lucide="alert-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+  <div>
+    <strong>HDFS Service is Currently Unavailable</strong>
+    <p style="margin-top: 0.25rem; font-size: 0.825rem; opacity: 0.9;">
+      The gateway cannot communicate with the Hadoop NameNode. If you are developing locally on macOS, HDFS will be detected when deployed on the Kali Linux environment.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Recent Files Section -->
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title">Recent Files</h2>
+    {% if recent_files %}
+      <a href="/files" class="btn btn-secondary btn-sm">View All Files →</a>
+    {% endif %}
+  </div>
+  
+  <div class="table-container" style="border: none; border-radius: 0;">
+    {% if recent_files %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Size</th>
+          <th>HDFS Path</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in recent_files %}
+        <tr data-filename="{{ file.name }}">
+          <td>
+            <div class="cell-filename">
+              <i data-lucide="file" style="width: 16px; height: 16px; color: var(--accent);"></i>
+              <span>{{ file.name }}</span>
+            </div>
+          </td>
+          <td class="cell-size">{{ file.size_formatted }}</td>
+          <td class="cell-path">{{ file.path }}</td>
+          <td>
+            <div class="table-actions">
+              <a href="/api/files/{{ file.name }}" class="btn btn-icon" title="Download {{ file.name }}">
+                <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+              </a>
+              <button type="button" class="btn btn-icon btn-icon-danger" title="Delete {{ file.name }}" onclick="openDeleteModal('{{ file.name }}')">
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">
+        <i data-lucide="folder-open" style="width: 44px; height: 44px;"></i>
+      </div>
+      <h3 class="empty-title">No files found</h3>
+      <p class="empty-desc">Upload files to Apache Hadoop HDFS to see them listed here.</p>
+      {% if stats.hdfs_connected %}
+        <a href="/upload" class="btn btn-primary">
+          <i data-lucide="upload-cloud" style="width: 16px; height: 16px;"></i>
+          Upload File
+        </a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

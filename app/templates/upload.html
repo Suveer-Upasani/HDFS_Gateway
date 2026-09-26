@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - HDFS Gateway{% endblock %}
+{% block page_title %}Upload File{% endblock %}
+{% block page_subtitle %}Transfer files directly into Hadoop HDFS storage{% endblock %}
+
+{% block header_actions %}
+<a href="/files" class="btn btn-secondary btn-sm">
+  <i data-lucide="arrow-left" style="width: 15px; height: 15px;"></i>
+  Back to Files
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="dropzone-container">
+  {% if not stats.hdfs_connected %}
+  <div class="alert alert-warning">
+    <i data-lucide="alert-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+    <div>
+      <strong>HDFS Service is Offline</strong>
+      <p style="margin-top: 0.25rem; font-size: 0.825rem;">
+        File uploads require an active Hadoop HDFS cluster. Uploading will be disabled until HDFS is reachable.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Success/Error Message Container -->
+  <div id="upload-result-alert" style="display: none;"></div>
+
+  <!-- Upload Form -->
+  <form id="upload-form" class="card">
+    <div class="card-header">
+      <h2 class="card-title">Upload file to HDFS</h2>
+      <span class="badge badge-neutral">Max: {{ max_upload_size_formatted }}</span>
+    </div>
+
+    <div class="card-body">
+      <!-- Hidden Native File Input -->
+      <input type="file" id="file-input" style="display: none;">
+
+      <!-- Interactive Dropzone -->
+      <div id="upload-dropzone" class="dropzone">
+        <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+        <h3 class="dropzone-title">Drag & drop your file here</h3>
+        <p class="dropzone-desc">or click anywhere in this area to browse your local filesystem</p>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('file-input').click()">
+          <i data-lucide="folder-open" style="width: 16px; height: 16px;"></i>
+          Choose File
+        </button>
+      </div>
+
+      <!-- Selected File Preview -->
+      <div id="file-preview-area" class="file-preview" style="display: none;">
+        <div class="file-preview-info">
+          <i data-lucide="file-check" style="width: 22px; height: 22px; color: var(--accent);"></i>
+          <div>
+            <div id="file-preview-name" style="font-weight: 600; color: var(--text);">filename.txt</div>
+            <div id="file-preview-size" style="font-size: 0.775rem; color: var(--text-muted);">0 B</div>
+          </div>
+        </div>
+        <button type="button" id="remove-file-btn" class="btn btn-icon btn-icon-danger" title="Remove file">
+          <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+        </button>
+      </div>
+
+      <!-- Destination Info -->
+      <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+          Destination: <code style="font-family: var(--font-mono); color: var(--text);">{{ upload_path }}</code>
+        </div>
+        <button 
+          type="submit" 
+          id="upload-submit-btn" 
+          class="btn btn-primary" 
+          disabled 
+          {% if not stats.hdfs_connected %}disabled title="HDFS Offline"{% endif %}
+        >
+          <i data-lucide="upload-cloud" style="width: 16px; height: 16px;"></i>
+          Upload to HDFS
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
