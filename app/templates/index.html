@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }} - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #38bdf8;
+            --accent-hover: #0284c7;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-logo {
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #0f172a;
+        }
+
+        .brand h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.3rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-status-connected {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-status-disconnected {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        .api-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .api-link:hover {
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
+        main {
+            flex: 1;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.375rem;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            background-color: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            background-color: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .dropzone:hover, .dropzone.dragover {
+            border-color: var(--accent);
+            background-color: rgba(56, 189, 248, 0.05);
+        }
+
+        .dropzone input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.625rem 1rem;
+            background-color: var(--accent);
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+
+        .btn-danger {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-danger:hover {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            width: auto;
+        }
+
+        /* Explorer */
+        .explorer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .path-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            background-color: #0f172a;
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            flex: 1;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            text-align: left;
+        }
+
+        th {
+            background-color: #0f172a;
+            padding: 0.75rem 1rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: rgba(51, 65, 85, 0.5);
+        }
+
+        .item-icon {
+            margin-right: 0.5rem;
+        }
+
+        .item-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .item-link:hover {
+            color: var(--accent);
+            text-decoration: underline;
+        }
+
+        .file-size {
+            font-family: var(--font-mono);
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .alert-success {
+            background-color: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success);
+            color: #6ee7b7;
+        }
+
+        .alert-error {
+            background-color: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger);
+            color: #fca5a5;
+        }
+
+        footer {
+            border-top: 1px solid var(--border-color);
+            padding: 1.5rem 2rem;
+            text-align: center;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-logo">H</div>
+            <div>
+                <h1>{{ app_name }}</h1>
+            </div>
+        </div>
+        <div class="header-meta">
+            <span class="badge {% if hdfs_status.status == 'connected' %}badge-status-connected{% else %}badge-status-disconnected{% endif %}" id="status-badge">
+                <span class="status-dot"></span>
+                <span id="status-text">{{ hdfs_status.status }}</span>
+            </span>
+            <a href="/docs" class="api-link" target="_blank">API Swagger Docs ↗</a>
+        </div>
+    </header>
+
+    <main>
+        <!-- Sidebar Actions -->
+        <aside>
+            <div id="alert-box" class="alert"></div>
+
+            <!-- Upload Card -->
+            <div class="card">
+                <div class="card-title">Upload File to HDFS</div>
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="destination_path">Destination Folder</label>
+                        <input type="text" id="destination_path" name="destination_path" value="{{ current_path }}" placeholder="/data/uploads">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Select File</label>
+                        <div class="dropzone" id="dropzone">
+                            <span id="file-label">Drag & drop file or click to browse</span>
+                            <input type="file" id="file-input" name="file" required>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="overwrite" name="overwrite" checked>
+                        <label for="overwrite" style="margin-bottom:0;">Overwrite if file exists</label>
+                    </div>
+
+                    <button type="submit" class="btn" style="margin-top: 1rem;" id="upload-btn">
+                        Upload to HDFS
+                    </button>
+                </form>
+            </div>
+
+            <!-- New Directory Card -->
+            <div class="card">
+                <div class="card-title">Create Directory</div>
+                <form id="mkdir-form">
+                    <div class="form-group">
+                        <label for="new_dir_path">Directory Path</label>
+                        <input type="text" id="new_dir_path" name="dir_path" placeholder="/new_folder" required>
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Create Directory</button>
+                </form>
+            </div>
+
+            <!-- Infrastructure Info -->
+            <div class="card">
+                <div class="card-title">Hadoop Connection</div>
+                <div style="font-size: 0.8125rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div><strong>Namenode URL:</strong> <span style="font-family: var(--font-mono);">{{ namenode_url }}</span></div>
+                    <div><strong>HDFS User:</strong> <span style="font-family: var(--font-mono);">{{ hdfs_user }}</span></div>
+                    <div><strong>Gateway Port:</strong> <span style="font-family: var(--font-mono);">{{ port }}</span></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Explorer Content -->
+        <section>
+            <div class="card" style="min-height: 500px;">
+                <div class="explorer-header">
+                    <div class="path-bar">
+                        <span>HDFS:</span>
+                        <strong id="current-path-display">{{ current_path }}</strong>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary btn-sm" onclick="loadFiles(currentPath)">⟳ Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Permissions</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="files-tbody">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                                    Loading files...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        HDFS Gateway &bull; FastAPI Service &bull; Port {{ port }}
+    </footer>
+
+    <script>
+        let currentPath = "{{ current_path }}";
+
+        const alertBox = document.getElementById('alert-box');
+        const fileInput = document.getElementById('file-input');
+        const fileLabel = document.getElementById('file-label');
+        const dropzone = document.getElementById('dropzone');
+        const uploadForm = document.getElementById('upload-form');
+        const mkdirForm = document.getElementById('mkdir-form');
+        const filesTbody = document.getElementById('files-tbody');
+        const currentPathDisplay = document.getElementById('current-path-display');
+        const destinationPathInput = document.getElementById('destination_path');
+
+        function showAlert(message, isError = false) {
+            alertBox.textContent = message;
+            alertBox.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
+            alertBox.style.display = 'block';
+            setTimeout(() => {
+                alertBox.style.display = 'none';
+            }, 5000);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            if (fileInput.files.length > 0) {
+                fileLabel.textContent = fileInput.files[0].name;
+            } else {
+                fileLabel.textContent = 'Drag & drop file or click to browse';
+            }
+        });
+
+        async function loadFiles(path) {
+            currentPath = path;
+            currentPathDisplay.textContent = path;
+            destinationPathInput.value = path;
+
+            try {
+                const response = await fetch(`/api/v1/files/list?path=${encodeURIComponent(path)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to list directory');
+                }
+
+                renderFileList(data.items || []);
+            } catch (err) {
+                filesTbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--danger); padding: 2rem;">
+                            ${err.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function renderFileList(items) {
+            let html = '';
+
+            // Parent directory link if not root
+            if (currentPath !== '/') {
+                const parentParts = currentPath.split('/').filter(Boolean);
+                parentParts.pop();
+                const parentPath = '/' + parentParts.join('/');
+                html += `
+                    <tr>
+                        <td colspan="5">
+                            <a href="#" class="item-link" onclick="loadFiles('${parentPath}'); return false;">
+                                <span class="item-icon">📁</span> .. (Parent Directory)
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            if (items.length === 0) {
+                html += `
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                            No files or directories found.
+                        </td>
+                    </tr>
+                `;
+            } else {
+                items.forEach(item => {
+                    const isDir = item.type === 'DIRECTORY';
+                    const icon = isDir ? '📁' : '📄';
+                    const nameHtml = isDir 
+                        ? `<a href="#" class="item-link" onclick="loadFiles('${item.path}'); return false;"><span class="item-icon">${icon}</span>${item.name}</a>`
+                        : `<span class="item-icon">${icon}</span>${item.name}`;
+
+                    const actionsHtml = isDir
+                        ? `<button class="btn btn-danger btn-sm" onclick="deleteItem('${item.path}')">Delete</button>`
+                        : `
+                            <div class="actions">
+                                <a href="/api/v1/files/download?path=${encodeURIComponent(item.path)}" class="btn btn-secondary btn-sm" target="_blank">Download</a>
+                                <button class="btn btn-danger btn-sm" onclick="deleteItem('${item.path}')">Delete</button>
+                            </div>
+                        `;
+
+                    html += `
+                        <tr>
+                            <td>${nameHtml}</td>
+                            <td><span style="font-size:0.75rem; color: var(--text-secondary);">${item.type}</span></td>
+                            <td class="file-size">${isDir ? '-' : formatBytes(item.length)}</td>
+                            <td style="font-family: var(--font-mono); font-size:0.8125rem;">${item.permission || '-'}</td>
+                            <td>${actionsHtml}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            filesTbody.innerHTML = html;
+        }
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showAlert('Please select a file to upload', true);
+                return;
+            }
+
+            const uploadBtn = document.getElementById('upload-btn');
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('destination_dir', destinationPathInput.value || '/');
+            formData.append('overwrite', document.getElementById('overwrite').checked);
+
+            try {
+                const response = await fetch('/api/v1/files/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Upload failed');
+                }
+
+                showAlert(`Uploaded successfully: ${result.path}`);
+                fileInput.value = '';
+                fileLabel.textContent = 'Drag & drop file or click to browse';
+                loadFiles(currentPath);
+            } catch (err) {
+                showAlert(err.message, true);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload to HDFS';
+            }
+        });
+
+        mkdirForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const dirPathInput = document.getElementById('new_dir_path');
+            let path = dirPathInput.value.trim();
+            if (!path.startsWith('/')) {
+                path = (currentPath === '/' ? '/' : currentPath + '/') + path;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/files/mkdir?path=${encodeURIComponent(path)}`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to create directory');
+                }
+                showAlert(`Directory created: ${path}`);
+                dirPathInput.value = '';
+                loadFiles(currentPath);
+            } catch (err) {
+                showAlert(err.message, true);
+            }
+        });
+
+        async function deleteItem(path) {
+            if (!confirm(`Are you sure you want to delete ${path}?`)) return;
+
+            try {
+                const response = await fetch(`/api/v1/files/delete?path=${encodeURIComponent(path)}&recursive=true`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to delete');
+                }
+                showAlert(`Deleted: ${path}`);
+                loadFiles(currentPath);
+            } catch (err) {
+                showAlert(err.message, true);
+            }
+        }
+
+        // Initialize file listing on load
+        loadFiles(currentPath);
+    </script>
+</body>
+</html>
