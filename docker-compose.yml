@@ -1,24 +1,22 @@
-version: '3.8'
-
 services:
   hdfs-gateway:
     build:
       context: .
       dockerfile: Dockerfile
+
     container_name: hdfs-gateway
-    ports:
-      - "5005:5005"
+
+    network_mode: host
+
     environment:
-      - APP_NAME=HDFS Gateway API
-      - APP_ENV=production
-      - DEBUG=false
-      - HOST=0.0.0.0
-      - PORT=5005
-      - HDFS_NAMENODE_URL=${HDFS_NAMENODE_URL:-http://localhost:9870}
-      - HDFS_USER=${HDFS_USER:-hadoop}
-      - HDFS_DEFAULT_DIR=/
-      - HDFS_TIMEOUT_SECONDS=30
-    extra_hosts:
-      # Allows gateway container to reach host machine services on Linux/Mac
-      - "host.docker.internal:host-gateway"
+      APP_NAME: HDFS Gateway API
+      APP_ENV: production
+      DEBUG: "false"
+      HOST: 0.0.0.0
+      PORT: 5005
+      HDFS_NAMENODE_URL: ${HDFS_NAMENODE_URL:-http://localhost:9870}
+      HDFS_USER: ${HDFS_USER:-suveer}
+      HDFS_DEFAULT_DIR: /
+      HDFS_TIMEOUT_SECONDS: 30
+
     restart: unless-stopped

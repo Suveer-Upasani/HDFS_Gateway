@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Hadoop WebHDFS Configuration
     HDFS_NAMENODE_URL: str = "http://localhost:9870"
-    HDFS_USER: str = "hadoop"
+    HDFS_USER: str = "suveer"
     HDFS_DEFAULT_DIR: str = "/"
     HDFS_TIMEOUT_SECONDS: float = 30.0
 
