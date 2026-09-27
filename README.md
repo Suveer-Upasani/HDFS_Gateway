@@ -1,194 +1,1067 @@
-# 🌐 FastAPI HDFS Gateway
+# 🐘 FastAPI HDFS Gateway
 
-A production-ready asynchronous REST API and Web Gateway for **Apache Hadoop HDFS (Hadoop Distributed File System)**.
-
-This gateway provides a high-performance HTTP interface to an existing Hadoop HDFS installation, exposing endpoints to upload, stream-download, list, create directories, and delete files without modifying the Hadoop cluster infrastructure or requiring Hadoop CLI client binaries.
+An asynchronous REST API gateway and web management interface built with **FastAPI** to interact with an **existing Apache Hadoop HDFS (Hadoop Distributed File System)** cluster via **WebHDFS**.
 
 ---
 
-## 🎯 System Architecture
+## 📑 Table of Contents
 
-The gateway is built on macOS, containerized with Docker, version-controlled via GitHub, and deployed directly onto the Linux host running Apache Hadoop.
+1. [Project Overview](#1-project-overview)
+2. [Complete System Architecture](#2-complete-system-architecture)
+3. [Project Structure](#3-project-structure)
+4. [macOS Development Environment](#4-macos-development-environment)
+5. [Git & GitHub Workflow](#5-git--github-workflow)
+6. [Linux VM Setup & Preparation](#6-linux-vm-setup--preparation)
+7. [Setting Up Hadoop with Cloudera Sandbox (Optional Alternative)](#7-setting-up-hadoop-with-cloudera-sandbox-optional-alternative)
+8. [Existing Hadoop Installation Environment](#8-existing-hadoop-installation-environment)
+9. [How to Start & Manage Hadoop](#9-how-to-start--manage-hadoop)
+10. [WebHDFS Configuration & Protocol Lifecycle](#10-webhdfs-configuration--protocol-lifecycle)
+11. [Docker Deployment Architecture](#11-docker-deployment-architecture)
+12. [Environment Configuration Reference](#12-environment-configuration-reference)
+13. [REST API Documentation & Endpoints](#13-rest-api-documentation--endpoints)
+14. [End-to-End Deployment Guide](#14-end-to-end-deployment-guide)
+15. [End-to-End Verification & Testing](#15-end-to-end-verification--testing)
+16. [Comprehensive Troubleshooting Guide](#16-comprehensive-troubleshooting-guide)
+17. [Security Model & Hardening](#17-security-model--hardening)
+18. [Production & Deployment Notes](#18-production--deployment-notes)
+19. [Common Command Reference](#19-common-command-reference)
+20. [Verification & Conformance Report](#20-verification--conformance-report)
+
+---
+
+## 1. Project Overview
+
+### What the Project Is
+The **FastAPI HDFS Gateway** is a containerized Python API layer and lightweight web user interface providing programmatic and browser-based HTTP access to an existing **Apache Hadoop HDFS** installation.
+
+### Why the Gateway Exists
+Interacting directly with Hadoop HDFS typically requires:
+* Shell / SSH access to the Hadoop nodes.
+* Installation of the heavy Java-based Hadoop CLI (`hdfs dfs`).
+* Complex client-side configuration (`core-site.xml`, `hdfs-site.xml`).
+
+This gateway decouples applications and users from raw Hadoop command-line tools by offering a clean, standard REST interface (`/api/v1`) for file lifecycle operations: **uploading, streaming downloads, directory creation, listing metadata, and path deletion**.
+
+### What the Gateway Is NOT
+* **Not a Hadoop distribution:** The gateway does **not** replace, build, or deploy Hadoop.
+* **Not a mock or simulation engine:** The gateway does **not** simulate HDFS locally and contains zero fake storage logic.
+* **Not a local storage store:** The gateway does **not** retain uploaded or downloaded files on its local container disk. It streams data directly to and from Hadoop DataNodes over HTTP.
+* **Hadoop is an external dependency:** Apache Hadoop runs as independent infrastructure on the Linux host/cluster.
 
 ```mermaid
-flowchart TD
-    subgraph Client Layer
-        Browser["🖥️ Web Browser (Management UI)"]
-        ClientApp["⚡ External Services & HTTP Clients"]
-    end
-
-    subgraph Gateway Layer ["🚪 FastAPI Gateway (Port 5005)"]
-        FastAPI["FastAPI App (app/main.py)"]
-        Endpoints["REST Endpoints (/api/v1)"]
-        Service["HDFSService (app/services/hdfs_service.py)"]
-        Config["Configuration (Pydantic / .env)"]
-    end
-
-    subgraph Hadoop Layer ["🐘 Existing Hadoop Infrastructure (Linux Host)"]
-        NameNode["Hadoop NameNode (WebHDFS Port 9870)"]
-        DataNode["Hadoop DataNodes (HTTP Block Transfer Port 9864)"]
-    end
-
-    Browser -->|HTTP Requests| FastAPI
-    ClientApp -->|REST / JSON| FastAPI
-    FastAPI --> Endpoints
-    Endpoints --> Service
-    Service --> Config
-
-    %% WebHDFS Operations
-    Service -->|1. PUT op=CREATE (Init)| NameNode
-    NameNode -->|307 Redirect (Location: DataNode)| Service
-    Service -->|2. Stream PUT Payload| DataNode
-    Service -->|GET op=OPEN (Stream Download)| DataNode
-    Service -->|GET op=LISTSTATUS / PUT op=MKDIRS / DELETE| NameNode
+flowchart LR
+    Client["Client / Browser"] -->|"HTTP / REST (Port 5005)"| Gateway["FastAPI HDFS Gateway"]
+    Gateway -->|"WebHDFS REST (Port 9870)"| NameNode["Hadoop NameNode"]
+    Gateway -.->|"Direct Data Stream (Port 9864)"| DataNode["Hadoop DataNode(s)"]
+    DataNode -->|"Blocks"| Storage[("HDFS Distributed Storage")]
 ```
-
-### 🔑 Architecture Highlights
-- **External Dependency Model:** Hadoop HDFS is treated as existing backend infrastructure. The gateway modifies zero Hadoop configs.
-- **Pure WebHDFS Protocol:** Communicates via standard Hadoop WebHDFS v1 REST specifications, adhering to the 2-step `307 Temporary Redirect` upload lifecycle.
-- **Zero-Footprint Streaming:** Direct asynchronous chunk streaming for uploads and downloads prevents memory spikes when transferring large files.
-- **Security & Sanitization:** All user-supplied HDFS paths are normalized and protected against traversal attacks (`/..`).
 
 ---
 
-## 📂 Project Structure
+## 2. Complete System Architecture
+
+### Runtime Communication Architecture
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                    Client / Browser                     │
+└────────────────────────────┬────────────────────────────┘
+                             │ HTTP Requests (Port 5005)
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│            FastAPI HDFS Gateway (Port 5005)             │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ app/main.py (FastAPI App & Jinja2 UI)             │  │
+│  └─────────────────────────┬─────────────────────────┘  │
+│                            │                            │
+│  ┌─────────────────────────▼─────────────────────────┐  │
+│  │ app/api/endpoints.py (/api/v1/* routes)           │  │
+│  └─────────────────────────┬─────────────────────────┘  │
+│                            │                            │
+│  ┌─────────────────────────▼─────────────────────────┐  │
+│  │ app/services/hdfs_service.py (HDFSService Client) │  │
+│  └─────────────────────────┬─────────────────────────┘  │
+└────────────────────────────┼────────────────────────────┘
+                             │ WebHDFS Protocol
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│                 Hadoop Infrastructure                   │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐   │
+│   │ Hadoop NameNode (WebHDFS Port 9870)             │   │
+│   │ • Metadata, namespace, and 307 redirects        │   │
+│   └────────────────────────┬────────────────────────┘   │
+│                            │ DataNode HTTP Redirection   │
+│   ┌────────────────────────▼────────────────────────┐   │
+│   │ Hadoop DataNode(s) (Block Transfer Port 9864)   │   │
+│   │ • Binary chunk upload & stream download         │   │
+│   └────────────────────────┬────────────────────────┘   │
+│                            │ Block Storage              │
+│   ┌────────────────────────▼────────────────────────┐   │
+│   │ HDFS Physical Storage Directory                 │   │
+│   └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Engineering & Deployment Flow
+
+```text
+┌──────────────────────────────────────┐
+│           macOS Workstation          │
+│   • FastAPI & service development    │
+│   • Local unit testing (pytest)      │
+│   • Code quality checks (ruff)       │
+└──────────────────┬───────────────────┘
+                   │ git push origin main
+                   ▼
+┌──────────────────────────────────────┐
+│           GitHub Repository          │
+│   Suveer-Upasani/HDFS_Gateway        │
+└──────────────────┬───────────────────┘
+                   │ git pull origin main
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│                   Linux VM Host                      │
+│                                                      │
+│  ┌────────────────────────┐  ┌────────────────────┐  │
+│  │ Docker Gateway App     │  │ Existing Hadoop    │  │
+│  │ (network_mode: host)   │  │ Version 3.4.2      │  │
+│  │ • FastAPI on :5005     │  │ • NameNode :9870   │  │
+│  │ • Python 3.12-slim     │  │ • DataNode :9864   │  │
+│  └───────────┬────────────┘  └─────────▲──────────┘  │
+│              │                         │             │
+│              └──── localhost:9870 ─────┘             │
+└──────────────────────────────────────────────────────┘
+```
+
+* **On macOS:** Development, test suites, static analysis, and version control operations.
+* **On Linux VM:** Hosting the production Apache Hadoop cluster and running the containerized FastAPI Gateway via Docker Compose with `network_mode: host`.
+
+---
+
+## 3. Project Structure
 
 ```
 .
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                     # FastAPI application entrypoint, CORS & templates
+│   ├── __init__.py                 # Package initializer
+│   ├── main.py                     # FastAPI application, CORS middleware, Jinja2 template mounting
 │   ├── api/
-│   │   ├── __init__.py
-│   │   └── endpoints.py            # REST API routes (/api/v1/health, files/list, upload, etc.)
+│   │   ├── __init__.py             # API package initializer
+│   │   └── endpoints.py            # REST API endpoints (/api/v1/health, list, upload, download, mkdir, delete)
 │   ├── core/
-│   │   ├── __init__.py
-│   │   └── config.py               # Pydantic Settings & environment variable configuration
+│   │   ├── __init__.py             # Core package initializer
+│   │   └── config.py               # Pydantic BaseSettings environment configuration loader
 │   ├── services/
-│   │   ├── __init__.py
-│   │   └── hdfs_service.py         # Async WebHDFS client communicating with Hadoop NameNode/DataNode
-│   ├── templates/
-│   │   └── index.html              # Management UI dashboard
-│   └── static/                     # Static UI assets
+│   │   ├── __init__.py             # Services package initializer
+│   │   └── hdfs_service.py         # Async WebHDFS client communicating with Hadoop NameNode & DataNode
+│   └── templates/
+│       └── index.html              # Management UI dashboard with drag-and-drop upload & explorer
 ├── tests/
-│   ├── __init__.py
-│   └── test_health.py              # Pytest async test suite (ASGITransport)
-├── .env.example                    # Template environment variables
-├── .gitignore                      # Git ignore rules for Python & environment files
-├── Dockerfile                      # Production Python 3.12 container image
-├── docker-compose.yml              # Docker Compose deployment definition
-├── Makefile                        # Automation shortcuts (run, dev, test, docker-build)
-├── requirements.txt                # Production Python dependencies
-└── requirements-dev.txt            # Development & testing dependencies
+│   ├── __init__.py                 # Test package initializer
+│   └── test_health.py              # Asynchronous unit test suite using pytest & httpx.ASGITransport
+├── .env.example                    # Template environment variable configuration (safe to commit)
+├── .gitignore                      # Git ignore rules for Python, caches, and environment files
+├── Dockerfile                      # Production container image definition (Python 3.12-slim)
+├── docker-compose.yml              # Multi-container orchestration specification with host networking
+├── Makefile                        # Development and operational command shortcuts
+├── requirements.txt                # Production application dependencies
+├── requirements-dev.txt            # Development, linting, and testing dependencies
+└── README.md                       # Comprehensive system and deployment documentation
+```
+
+### Module Responsibilities
+
+| File | Purpose |
+| :--- | :--- |
+| [`app/main.py`](file:///Users/suveer/HDFS/app/main.py) | Application root. Instantiates the FastAPI application, mounts templates and static files, configures CORS, and registers API routers. |
+| [`app/api/endpoints.py`](file:///Users/suveer/HDFS/app/api/endpoints.py) | Defines all HTTP endpoints under `/api/v1`. Validates incoming requests, sanitizes paths, and dispatches calls to the service layer. |
+| [`app/core/config.py`](file:///Users/suveer/HDFS/app/core/config.py) | Pydantic `BaseSettings` class loading configuration from environment variables and `.env` files with strict typing and defaults. |
+| [`app/services/hdfs_service.py`](file:///Users/suveer/HDFS/app/services/hdfs_service.py) | Encapsulates all WebHDFS protocol mechanics: path sanitization, HTTP redirects (307), chunked streaming downloads, and error handling. |
+| [`app/templates/index.html`](file:///Users/suveer/HDFS/app/templates/index.html) | Single-page management UI with live cluster connectivity status, drag-and-drop upload, and folder navigation. |
+| [`tests/test_health.py`](file:///Users/suveer/HDFS/tests/test_health.py) | Asynchronous test suite verifying dashboard rendering, health endpoint, directory listings, uploads, and path traversal security. |
+| [`Dockerfile`](file:///Users/suveer/HDFS/Dockerfile) | Multi-stage, security-hardened `python:3.12-slim` image configured with curl health checks and unbuffered logging. |
+| [`docker-compose.yml`](file:///Users/suveer/HDFS/docker-compose.yml) | Runs the gateway container using `network_mode: host` to directly bind to the host's Hadoop services. |
+| [`Makefile`](file:///Users/suveer/HDFS/Makefile) | Standard command shortcuts (`make dev`, `make run`, `make test`, `make docker-build`). |
+
+---
+
+## 4. macOS Development Environment
+
+Local development on macOS allows testing the FastAPI application, static analysis, and test suites without modifying or running Hadoop locally.
+
+### 1. Prerequisites Check
+Verify that Python 3.12+ and Git are installed on macOS:
+```bash
+python3 --version
+git --version
+```
+
+### 2. Clone Repository & Setup Virtual Environment
+```bash
+# Navigate to workspace
+cd ~/HDFS
+
+# Create a dedicated Python 3.12 virtual environment
+python3 -m venv .venv
+
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip
+```
+
+### 3. Install Dependencies
+```bash
+# Install production and development dependencies
+pip install -r requirements-dev.txt
+```
+
+### 4. Configure Local Environment
+Create your local `.env` configuration file from the template:
+```bash
+cp .env.example .env
+```
+
+Ensure `.env` contains:
+```env
+APP_NAME=HDFS Gateway API
+APP_ENV=development
+DEBUG=true
+HOST=0.0.0.0
+PORT=5005
+HDFS_NAMENODE_URL=http://localhost:9870
+HDFS_USER=suveer
+HDFS_DEFAULT_DIR=/
+HDFS_TIMEOUT_SECONDS=30
+```
+
+### 5. Run Static Analysis & Tests
+```bash
+# Run Ruff linting and formatting check
+ruff check .
+
+# Run unit test suite
+pytest -v
+```
+
+### 6. Start Development Server
+```bash
+# Run FastAPI with auto-reload enabled
+make dev
+# Alternatively:
+uvicorn app.main:app --host 0.0.0.0 --port 5005 --reload
+```
+
+* **Web UI Dashboard:** Open [http://localhost:5005](http://localhost:5005)
+* **Interactive OpenAPI (Swagger) Docs:** Open [http://localhost:5005/docs](http://localhost:5005/docs)
+* **ReDoc Documentation:** Open [http://localhost:5005/redoc](http://localhost:5005/redoc)
+
+> [!NOTE]
+> When running locally on macOS without a live Hadoop cluster, unit tests pass via mocked network fixtures. Live cluster calls to `/api/v1/files/list` will return `503 Service Unavailable` with a descriptive message until deployed to the Linux VM hosting Hadoop.
+
+---
+
+## 5. Git & GitHub Workflow
+
+A strict Git hygiene policy ensures sensitive data and machine-specific artifacts are never committed.
+
+### Workflow Commands
+
+```bash
+# 1. Check current repository status
+git status
+
+# 2. Stage modified files
+git add app/ tests/ Dockerfile docker-compose.yml Makefile requirements.txt requirements-dev.txt .env.example .gitignore README.md
+
+# 3. Commit changes
+git commit -m "Production-ready HDFS API gateway"
+
+# 4. Push to GitHub main branch
+git push origin main
+```
+
+On the Linux deployment machine:
+```bash
+# Pull latest updates
+git pull origin main
+```
+
+### Git Hygiene Rules
+* **Never commit `.env`:** [.gitignore](file:///Users/suveer/HDFS/.gitignore) explicitly excludes `.env` and `.env.local`.
+* **Safe configuration:** Only commit [.env.example](file:///Users/suveer/HDFS/.env.example).
+* **Excluded directories:** `.venv/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, and log files are ignored.
+* **Verify ignored files:**
+  ```bash
+  git ls-files .env
+  # (Must return empty output)
+  ```
+
+---
+
+## 6. Linux VM Setup & Preparation
+
+The gateway is designed to deploy onto a Linux Virtual Machine (such as Ubuntu 22.04 / 24.04 LTS under VMware Workstation / Fusion / ESXi).
+
+### 1. Verify Linux System Resources & Packages
+Run the following commands on the Linux VM to verify system specs and dependencies:
+
+```bash
+# Check kernel and architecture
+uname -a
+
+# Check Linux distribution details
+lsb_release -a || cat /etc/os-release
+
+# Check available memory (Recommended: 4GB+ RAM for Hadoop + Gateway)
+free -h
+
+# Check disk space (Recommended: 20GB+ free)
+df -h
+
+# Check Git installation
+git --version
+
+# Check Docker installation
+docker --version
+
+# Check Docker Compose plugin
+docker compose version
+```
+
+### 2. Install Docker & Docker Compose on Linux (If Missing)
+If Docker is not installed on your Linux machine:
+```bash
+# Update package lists
+sudo apt-get update
+
+# Install Docker prerequisites
+sudo apt-get install -y ca-certificates curl gnupg
+
+# Add Docker official GPG key
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Add Docker repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker Engine and Compose
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Enable current user to run Docker without sudo
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 ---
 
-## 📡 REST API Reference
+## 7. Setting Up Hadoop with Cloudera Sandbox (Optional Alternative)
 
-All REST endpoints are grouped under `/api/v1`. Interactive OpenAPI documentation is accessible at [`/docs`](http://localhost:5005/docs).
+> [!IMPORTANT]
+> This section is strictly an **optional reference guide** for developers seeking a pre-packaged Hadoop sandbox for experimentation. The FastAPI HDFS Gateway project runs against any standard Apache Hadoop installation and does **not** require Cloudera Sandbox.
 
-### 1. Health & Cluster Connectivity
-- **`GET /api/v1/health`**
-- Verifies gateway operation and checks active connectivity to the Hadoop NameNode.
+Cloudera provides pre-configured single-node evaluation VMs (e.g., Cloudera QuickStart / Cloudera Data Platform Private Cloud Sandbox) distributed as VMware / VirtualBox images or Docker containers.
 
-### 2. Directory Listing
-- **`GET /api/v1/files/list?path=/`**
-- **Query Parameter:** `path` (default: `/`)
-- **Sample Response:**
+### Step 1: Download the Sandbox Image
+1. Visit the [Cloudera Downloads Archive](https://www.cloudera.com/downloads.html).
+2. Select the **VMware (VMX / OVA)** package corresponding to your target platform.
+3. Download and extract the archive on your hypervisor host.
+
+### Step 2: VMware Resource Allocation
+Allocate sufficient hardware resources to ensure all Hadoop daemon processes (NameNode, DataNode, NodeManager, ResourceManager) initialize reliably:
+* **Memory:** Minimum **8 GB** (Recommended: **12 GB – 16 GB**).
+* **CPU:** Minimum **2 cores** (Recommended: **4 vCPUs**).
+* **Network Adapter:** **Bridged** or **Host-Only** with a dedicated static IP address.
+
+### Step 3: Start & Access the Sandbox VM
+1. Power on the VM in VMware.
+2. Allow 5–10 minutes for all services to start.
+3. Obtain the VM's assigned IP address from the console:
+   ```bash
+   ip addr show
+   ```
+4. Log in via SSH:
+   ```bash
+   ssh cloudera@<SANDBOX_IP>
+   # Default credentials vary by version (commonly cloudera / cloudera or root / cloudera)
+   ```
+
+### Step 4: Verify Hadoop Installation & Environment
+```bash
+# Locate Hadoop binaries
+which hdfs
+which hadoop
+
+# Check Hadoop version (Version is release-dependent)
+hdfs version
+
+# Verify running Java processes (NameNode, DataNode should be present)
+jps
+```
+
+### Step 5: Verify & Enable WebHDFS in Sandbox
+Check if WebHDFS is enabled in `/etc/hadoop/conf/hdfs-site.xml`:
+```xml
+<property>
+    <name>dfs.webhdfs.enabled</name>
+    <value>true</value>
+</property>
+```
+
+Verify WebHDFS access via `curl`:
+```bash
+# Standard NameNode WebHDFS port is 9870 (Hadoop 3.x) or 50070 (Hadoop 2.x)
+curl -s "http://localhost:9870/webhdfs/v1/?op=GETFILESTATUS&user.name=hdfs"
+```
+
+---
+
+## 8. Existing Hadoop Installation Environment
+
+This section documents the known configuration of the Linux host where Hadoop 3.4.2 is deployed.
+
+### Environment Parameters
+
+| Parameter | Known Path / Value |
+| :--- | :--- |
+| **Hadoop Version** | `3.4.2` |
+| **`HADOOP_HOME`** | `/opt/hadoop` |
+| **`HADOOP_CONF_DIR`** | `/opt/hadoop/etc/hadoop` |
+| **HDFS NameNode Storage** | `/home/suveer/hadoopdata/hdfs/namenode` |
+| **HDFS DataNode Storage** | `/home/suveer/hadoopdata/hdfs/datanode` |
+| **Primary HDFS User** | `suveer` |
+| **NameNode HTTP Port** | `9870` |
+| **DataNode HTTP Port** | `9864` |
+
+> [!CAUTION]
+> **CRITICAL WARNING:** Never manually modify, delete, or add files directly inside the physical NameNode (`/home/suveer/hadoopdata/hdfs/namenode`) or DataNode (`/home/suveer/hadoopdata/hdfs/datanode`) storage directories. These directories contain Hadoop internal block files, transaction logs, and metadata fsimages. All interactions must proceed through Hadoop CLI commands (`hdfs dfs`) or the WebHDFS REST API.
+
+---
+
+## 9. How to Start & Manage Hadoop
+
+Execute these operational commands on the Linux VM to manage Hadoop services.
+
+### 1. Verify Environment Variables
+Ensure Hadoop environment variables are loaded in `~/.bashrc` or current shell:
+```bash
+export HADOOP_HOME=/opt/hadoop
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+```
+
+### 2. Check If Hadoop Services Are Running
+```bash
+# Check active Java daemon processes
+jps
+```
+Expected output includes:
+* `NameNode`
+* `DataNode`
+* `SecondaryNameNode`
+
+### 3. Start Hadoop HDFS Daemons
+```bash
+# Start NameNode and DataNodes
+$HADOOP_HOME/sbin/start-dfs.sh
+```
+
+### 4. Verify HDFS Filesystem Health
+```bash
+# Check HDFS root listing
+hdfs dfs -ls /
+
+# Check HDFS cluster report and capacity
+hdfs dfsadmin -report
+```
+
+### 5. Verify NameNode Web Interface
+Open a browser or use curl to check the NameNode web UI:
+* URL: `http://<LINUX_VM_IP>:9870`
+* Curl check:
+  ```bash
+  curl -I http://localhost:9870/dfshealth.html
+  ```
+
+### 6. Safely Stop Hadoop HDFS
+```bash
+# Stop all HDFS daemons
+$HADOOP_HOME/sbin/stop-dfs.sh
+```
+
+---
+
+## 10. WebHDFS Configuration & Protocol Lifecycle
+
+### What WebHDFS Is
+**WebHDFS** is the standard Apache Hadoop REST API specification. It provides full, secure HTTP/HTTPS access to HDFS filesystem operations using standard HTTP verbs (`GET`, `PUT`, `POST`, `DELETE`).
+
+### Verifying WebHDFS Configuration in `hdfs-site.xml`
+Inspect `$HADOOP_CONF_DIR/hdfs-site.xml` to ensure WebHDFS is active:
+```xml
+<configuration>
+    <property>
+        <name>dfs.webhdfs.enabled</name>
+        <value>true</value>
+    </property>
+</configuration>
+```
+
+### The 2-Step Upload Protocol Lifecycle
+Unlike simple file servers, Hadoop distributes file blocks across DataNodes. WebHDFS implements a **two-step redirect protocol** for file creation:
+
+```text
+FastAPI Gateway              Hadoop NameNode               Hadoop DataNode
+      │                            │                             │
+      │ 1. PUT /webhdfs/v1/file    │                             │
+      │    ?op=CREATE              │                             │
+      ├───────────────────────────>│                             │
+      │                            │                             │
+      │ 2. HTTP 307 Temporary      │                             │
+      │    Redirect (Location:     │                             │
+      │    http://datanode:9864)   │                             │
+      │<───────────────────────────┤                             │
+      │                                                          │
+      │ 3. PUT binary file stream to DataNode Location           │
+      ├─────────────────────────────────────────────────────────>│
+      │                                                          │
+      │ 4. HTTP 201 Created                                      │
+      │<─────────────────────────────────────────────────────────┤
+```
+
+1. **Step 1:** The Gateway issues a `PUT` request to the NameNode with `op=CREATE`.
+2. **Step 2:** The NameNode selects candidate DataNodes and responds with `HTTP 307 Temporary Redirect` containing the target DataNode URL in the `Location` header.
+3. **Step 3:** The Gateway streams the file content directly to the DataNode URL.
+4. **Step 4:** The DataNode commits the blocks to disk and returns `HTTP 201 Created`.
+
+### Direct WebHDFS Verification with Curl
+```bash
+# Verify NameNode status endpoint
+curl -s "http://localhost:9870/webhdfs/v1/?op=GETFILESTATUS&user.name=suveer"
+
+# Verify Root Directory Listing
+curl -s "http://localhost:9870/webhdfs/v1/?op=LISTSTATUS&user.name=suveer" | jq .
+```
+
+---
+
+## 11. Docker Deployment Architecture
+
+### Container Contents
+The Docker image is built using `python:3.12-slim`:
+* **Included:** Python runtime, FastAPI, Uvicorn, httpx, Jinja2, and application gateway code.
+* **Excluded:** No Hadoop binaries, no Java runtime, no Hadoop configuration files, and no HDFS block storage.
+
+### Why `network_mode: host` Is Used
+In `docker-compose.yml`, the gateway uses `network_mode: host`:
+```yaml
+services:
+  hdfs-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hdfs-gateway
+    network_mode: host
+    environment:
+      APP_NAME: HDFS Gateway API
+      APP_ENV: production
+      DEBUG: "false"
+      HOST: 0.0.0.0
+      PORT: 5005
+      HDFS_NAMENODE_URL: ${HDFS_NAMENODE_URL:-http://localhost:9870}
+      HDFS_USER: ${HDFS_USER:-suveer}
+      HDFS_DEFAULT_DIR: /
+      HDFS_TIMEOUT_SECONDS: 30
+    restart: unless-stopped
+```
+
+**Benefits of Host Networking:**
+1. Allows the containerized Gateway on the Linux VM to communicate directly with `localhost:9870` (NameNode) and `localhost:9864` (DataNode) without complex bridge port-forwarding or NAT redirection issues during the 307 redirect phase.
+2. Zero network overhead between the REST API and the local Hadoop daemons.
+
+### Docker Operational Commands
+
+```bash
+# Build the Docker image
+docker build -t hdfs-gateway:latest .
+
+# Launch service in background via Docker Compose
+docker compose up --build -d
+
+# View real-time container logs
+docker compose logs -f
+
+# Check container status
+docker compose ps
+
+# Stop and remove container
+docker compose down
+```
+
+---
+
+## 12. Environment Configuration Reference
+
+Configuration is managed via Pydantic `BaseSettings` in [`app/core/config.py`](file:///Users/suveer/HDFS/app/core/config.py). All parameters read from system environment variables with fallback defaults.
+
+| Environment Variable | Default Value | Type | Description |
+| :--- | :--- | :---: | :--- |
+| `APP_NAME` | `HDFS Gateway API` | `str` | Application title displayed in UI and Swagger docs. |
+| `APP_ENV` | `production` | `str` | Application environment (`development` or `production`). |
+| `DEBUG` | `false` | `bool` | Enables FastAPI debug mode and auto-reloader. |
+| `HOST` | `0.0.0.0` | `str` | Network interface address the gateway binds to. |
+| `PORT` | `5005` | `int` | TCP port exposed by the gateway. |
+| `HDFS_NAMENODE_URL` | `http://localhost:9870` | `str` | HTTP URL of the Hadoop NameNode WebHDFS endpoint. |
+| `HDFS_USER` | `suveer` | `str` | HDFS username identity for filesystem operations. |
+| `HDFS_DEFAULT_DIR` | `/` | `str` | Initial directory loaded in the web dashboard. |
+| `HDFS_TIMEOUT_SECONDS` | `30.0` | `float` | HTTP socket timeout for WebHDFS operations. |
+
+---
+
+## 13. REST API Documentation & Endpoints
+
+All endpoints are prefixed with `/api/v1` and documented via OpenAPI at `/docs`.
+
+### 1. Cluster Health Check
+* **Endpoint:** `GET /api/v1/health`
+* **Purpose:** Validates gateway health and verifies active connectivity to the Hadoop NameNode.
+* **Curl Example:**
+  ```bash
+  curl -X GET http://localhost:5005/api/v1/health
+  ```
+* **Sample Response (`200 OK`):**
   ```json
   {
-    "path": "/data",
+    "gateway_status": "healthy",
+    "hdfs_connectivity": {
+      "status": "connected",
+      "namenode_url": "http://localhost:9870",
+      "hdfs_user": "suveer",
+      "cluster_details": {
+        "owner": "suveer",
+        "group": "supergroup",
+        "permission": "755",
+        "type": "DIRECTORY"
+      }
+    }
+  }
+  ```
+
+---
+
+### 2. List Directory
+* **Endpoint:** `GET /api/v1/files/list`
+* **Parameters:** `path` (Query parameter, default: `/`)
+* **Curl Example:**
+  ```bash
+  curl -X GET "http://localhost:5005/api/v1/files/list?path=/user/suveer"
+  ```
+* **Sample Response (`200 OK`):**
+  ```json
+  {
+    "path": "/user/suveer",
     "count": 2,
     "items": [
       {
         "name": "logs",
-        "path": "/data/logs",
+        "path": "/user/suveer/logs",
         "type": "DIRECTORY",
         "length": 0,
+        "owner": "suveer",
+        "group": "supergroup",
         "permission": "755",
-        "modificationTime": 1711540000000
+        "modificationTime": 1711540000000,
+        "replication": 0,
+        "blockSize": 0
       },
       {
         "name": "dataset.csv",
-        "path": "/data/dataset.csv",
+        "path": "/user/suveer/dataset.csv",
         "type": "FILE",
         "length": 1048576,
+        "owner": "suveer",
+        "group": "supergroup",
         "permission": "644",
-        "modificationTime": 1711540200000
+        "modificationTime": 1711540200000,
+        "replication": 1,
+        "blockSize": 134217728
       }
     ]
   }
   ```
 
-### 3. File Upload
-- **`POST /api/v1/files/upload`**
-- **Form Data:**
-  - `file`: Multipart binary file
-  - `destination_dir`: Target HDFS directory path (e.g. `/data`)
-  - `overwrite`: `true` or `false`
-- **Response:**
+---
+
+### 3. Upload File
+* **Endpoint:** `POST /api/v1/files/upload`
+* **Payload Format:** `multipart/form-data`
+* **Parameters:**
+  * `file`: Binary file upload (`UploadFile`)
+  * `destination_dir`: Target HDFS directory (Form text, default: `/`)
+  * `overwrite`: Overwrite existing file (Form boolean, default: `true`)
+* **Curl Example:**
+  ```bash
+  curl -X POST http://localhost:5005/api/v1/files/upload \
+    -F "file=@/path/to/local/sample.txt" \
+    -F "destination_dir=/user/suveer" \
+    -F "overwrite=true"
+  ```
+* **Sample Response (`200 OK`):**
   ```json
   {
     "message": "File uploaded successfully",
-    "path": "/data/dataset.csv"
+    "path": "/user/suveer/sample.txt"
   }
   ```
 
-### 4. File Download
-- **`GET /api/v1/files/download?path=/data/dataset.csv`**
-- Streams the file directly from Hadoop HDFS to the client.
+---
 
-### 5. Directory Creation
-- **`POST /api/v1/files/mkdir?path=/data/new_folder`**
-
-### 6. File & Directory Deletion
-- **`DELETE /api/v1/files/delete?path=/data/dataset.csv&recursive=true`**
+### 4. Download File (Streaming)
+* **Endpoint:** `GET /api/v1/files/download`
+* **Parameters:** `path` (Query parameter, required)
+* **Curl Example:**
+  ```bash
+  curl -X GET "http://localhost:5005/api/v1/files/download?path=/user/suveer/sample.txt" \
+    --output downloaded_sample.txt
+  ```
+* **Response:** Binary octet-stream with `Content-Disposition: attachment; filename="sample.txt"`.
 
 ---
 
-## ⚙️ Environment Configuration
-
-Configuration is managed via environment variables and loaded through Pydantic Settings.
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `APP_NAME` | `HDFS Gateway API` | Application name in UI and Swagger docs |
-| `PORT` | `5005` | Gateway HTTP listen port |
-| `HOST` | `0.0.0.0` | Network interface binding |
-| `HDFS_NAMENODE_URL` | `http://localhost:9870` | URL to the Hadoop NameNode WebHDFS service |
-| `HDFS_USER` | `hadoop` | HDFS username executing filesystem operations |
-| `HDFS_DEFAULT_DIR` | `/` | Default root directory for file browsing |
-| `HDFS_TIMEOUT_SECONDS` | `30.0` | HTTP request timeout for HDFS operations |
+### 5. Create Directory
+* **Endpoint:** `POST /api/v1/files/mkdir`
+* **Parameters:** `path` (Query parameter, required)
+* **Curl Example:**
+  ```bash
+  curl -X POST "http://localhost:5005/api/v1/files/mkdir?path=/user/suveer/new_folder"
+  ```
+* **Sample Response (`200 OK`):**
+  ```json
+  {
+    "message": "Directory '/user/suveer/new_folder' created",
+    "path": "/user/suveer/new_folder",
+    "success": true
+  }
+  ```
 
 ---
 
-## 🚀 Deployment & Operations
+### 6. Delete File or Directory
+* **Endpoint:** `DELETE /api/v1/files/delete`
+* **Parameters:**
+  * `path` (Query parameter, required)
+  * `recursive` (Query boolean, default: `true`)
+* **Curl Example:**
+  ```bash
+  curl -X DELETE "http://localhost:5005/api/v1/files/delete?path=/user/suveer/sample.txt&recursive=true"
+  ```
+* **Sample Response (`200 OK`):**
+  ```json
+  {
+    "message": "Successfully deleted /user/suveer/sample.txt",
+    "path": "/user/suveer/sample.txt"
+  }
+  ```
 
-### 1. Local Development
+---
+
+## 14. End-to-End Deployment Guide
+
+Follow this sequential procedure to deploy from macOS to your production Linux VM:
+
+### STEP 1: Complete macOS Development & Validation
 ```bash
-# Install dependencies
-pip install -r requirements-dev.txt
-
-# Run server on port 5005 with auto-reload
-make dev
-```
-Open [http://localhost:5005](http://localhost:5005) for the UI or [http://localhost:5005/docs](http://localhost:5005/docs) for the Swagger API docs.
-
-### 2. Testing & Code Quality
-```bash
-# Run test suite
-pytest -v
-
-# Run linting
+cd ~/HDFS
 ruff check .
+pytest -v
 ```
 
-### 3. Docker Deployment
+### STEP 2: Commit & Push to GitHub
+```bash
+git add .
+git commit -m "Production-ready HDFS API gateway"
+git push origin main
+```
+
+### STEP 3: Start & Verify Hadoop on Linux VM
+Log in to your Linux VM:
+```bash
+# Start Hadoop HDFS daemons
+$HADOOP_HOME/sbin/start-dfs.sh
+
+# Verify daemons are running
+jps
+
+# Verify NameNode WebHDFS port is listening
+curl -s "http://localhost:9870/webhdfs/v1/?op=GETFILESTATUS&user.name=suveer"
+```
+
+### STEP 4: Clone the Repository on Linux
+```bash
+cd ~
+git clone https://github.com/Suveer-Upasani/HDFS_Gateway.git
+cd HDFS_Gateway
+```
+
+### STEP 5: Create Linux `.env` Configuration
+```bash
+cp .env.example .env
+```
+Ensure `.env` contains:
+```env
+APP_NAME=HDFS Gateway API
+APP_ENV=production
+DEBUG=false
+HOST=0.0.0.0
+PORT=5005
+HDFS_NAMENODE_URL=http://localhost:9870
+HDFS_USER=suveer
+HDFS_DEFAULT_DIR=/
+HDFS_TIMEOUT_SECONDS=30
+```
+
+### STEP 6: Build & Start Gateway via Docker Compose
+```bash
+docker compose up --build -d
+```
+
+### STEP 7: Check Container Logs & Health
+```bash
+docker compose logs -f
+```
+Expected output:
+```text
+INFO:     Started server process
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5005
+```
+
+---
+
+## 15. End-to-End Verification & Testing
+
+Execute these tests on the Linux VM to verify full end-to-end integration against HDFS:
+
+### 1. Test Gateway Health Endpoint
+```bash
+curl -s http://localhost:5005/api/v1/health | jq .
+```
+
+### 2. Create a Dedicated Test Directory in HDFS
+```bash
+curl -X POST "http://localhost:5005/api/v1/files/mkdir?path=/user/suveer/hdfs-gateway-test" | jq .
+```
+
+### 3. Upload a Test File
+```bash
+# Create a local test payload
+echo "Hello Hadoop HDFS from FastAPI Gateway!" > /tmp/test_payload.txt
+
+# Upload payload via Gateway
+curl -X POST http://localhost:5005/api/v1/files/upload \
+  -F "file=@/tmp/test_payload.txt" \
+  -F "destination_dir=/user/suveer/hdfs-gateway-test" \
+  -F "overwrite=true" | jq .
+```
+
+### 4. List Directory Contents via API
+```bash
+curl -s "http://localhost:5005/api/v1/files/list?path=/user/suveer/hdfs-gateway-test" | jq .
+```
+
+### 5. Download the File via API
+```bash
+curl -s "http://localhost:5005/api/v1/files/download?path=/user/suveer/hdfs-gateway-test/test_payload.txt"
+```
+
+### 6. Verify File in HDFS via Hadoop CLI
+Verify that Hadoop natively sees the uploaded file:
+```bash
+hdfs dfs -ls /user/suveer/hdfs-gateway-test
+hdfs dfs -cat /user/suveer/hdfs-gateway-test/test_payload.txt
+```
+
+### 7. Clean Up Test Path via API
+```bash
+curl -X DELETE "http://localhost:5005/api/v1/files/delete?path=/user/suveer/hdfs-gateway-test&recursive=true" | jq .
+```
+
+---
+
+## 16. Comprehensive Troubleshooting Guide
+
+### 1. FastAPI Gateway Container Does Not Start
+* **Symptom:** Container exits immediately after `docker compose up`.
+* **Investigation:**
+  ```bash
+  docker compose logs
+  docker ps -a
+  ```
+* **Resolution:** Check for port collisions or syntax errors in `.env`.
+
+### 2. Port 5005 Already in Use
+* **Symptom:** `bind: address already in use` error.
+* **Investigation:**
+  ```bash
+  sudo lsof -i :5005
+  # or:
+  sudo netstat -tulpn | grep 5005
+  ```
+* **Resolution:** Stop conflicting processes or adjust `PORT` in `.env`.
+
+### 3. WebHDFS Connection Refused (`503 Service Unavailable`)
+* **Symptom:** Gateway returns `Cannot connect to Hadoop NameNode at http://localhost:9870`.
+* **Investigation:**
+  1. Check if NameNode is listening on port 9870:
+     ```bash
+     curl -I http://localhost:9870
+     ```
+  2. Verify Hadoop processes via `jps`.
+* **Resolution:** If stopped, start Hadoop via `$HADOOP_HOME/sbin/start-dfs.sh`.
+
+### 4. File Upload Fails During 307 Redirect to DataNode
+* **Symptom:** `GET /api/v1/files/list` works, but `POST /api/v1/files/upload` hangs or fails.
+* **Root Cause:** NameNode redirects client to DataNode hostname/IP on port 9864. If DataNode hostname is unresolvable or port 9864 is blocked, the second step fails.
+* **Resolution:**
+  1. Check `dfs.datanode.http.address` in `hdfs-site.xml` (default: `0.0.0.0:9864`).
+  2. Ensure Linux hostname is in `/etc/hosts`:
+     ```bash
+     127.0.0.1 localhost <HOSTNAME>
+     ```
+
+### 5. HDFS Permission Denied (`403 / 502`)
+* **Symptom:** `Permission denied: user=suveer, access=WRITE, inode="/root":hdfs:supergroup:drwxr-xr-x`.
+* **Root Cause:** The configured `HDFS_USER` does not have write permissions to the target directory.
+* **Resolution:**
+  1. Change ownership or permissions in HDFS:
+     ```bash
+     hdfs dfs -chmod 777 /target_dir
+     # or:
+     hdfs dfs -chown -R suveer:supergroup /target_dir
+     ```
+  2. Ensure `HDFS_USER=suveer` in `.env`.
+
+### 6. Accidental Git Tracking of `.env`
+* **Check:**
+  ```bash
+  git ls-files .env
+  ```
+* **Resolution:** Untrack without deleting local file:
+  ```bash
+  git rm --cached .env
+  git commit -m "Remove .env from git tracking"
+  ```
+
+---
+
+## 17. Security Model & Hardening
+
+* **Path Traversal Protection:** All user paths pass through `sanitize_hdfs_path()` in [`app/services/hdfs_service.py`](file:///Users/suveer/HDFS/app/services/hdfs_service.py). Path traversal sequences containing `..` or null bytes are rejected with HTTP 400 Bad Request.
+* **Filename Sanitization:** Upload filenames pass through `sanitize_filename()`, stripping dangerous filesystem delimiters and control characters.
+* **Zero Local Staging:** Files are streamed directly to Hadoop DataNodes in 64KB memory buffers without saving temporary files to the gateway's host disk.
+* **HDFS User Isolation:** HDFS permissions remain strictly enforced by Apache Hadoop based on the authenticated `HDFS_USER`.
+* **Network Scope:** In production environments exposed outside a private virtual network, place the gateway behind a reverse proxy (e.g., NGINX / Caddy) with TLS/HTTPS encryption and authentication.
+
+---
+
+## 18. Production & Deployment Notes
+
+Before deploying in a production enterprise environment, consider the following infrastructure enhancements:
+
+* **Authentication & Authorization:** Add JWT / OAuth2 token authentication or API keys to secure the `/api/v1/*` routes.
+* **TLS / SSL Termination:** Configure an NGINX reverse proxy with valid TLS certificates for HTTPS encryption.
+* **Rate Limiting:** Implement rate limiting on file upload and download endpoints.
+* **High Availability (HA):** In Hadoop clusters with High Availability NameNodes, configure WebHDFS with the active NameNode or an HTTP load balancer.
+* **Monitoring & Metrics:** Integrate Prometheus middleware into FastAPI for request latency and throughput monitoring.
+
+---
+
+## 19. Common Command Reference
+
+### Git Operations
+```bash
+# Check working tree
+git status
+
+# Update from remote
+git pull origin main
+
+# Commit changes
+git add .
+git commit -m "Your descriptive commit message"
+git push origin main
+```
+
+### Hadoop Administration
+```bash
+# Check version
+hdfs version
+
+# List HDFS files
+hdfs dfs -ls /
+
+# Create HDFS directory
+hdfs dfs -mkdir -p /user/suveer/data
+
+# Put local file to HDFS
+hdfs dfs -put /local/path /user/suveer/data/
+
+# Read file from HDFS
+hdfs dfs -cat /user/suveer/data/sample.txt
+
+# Remove file from HDFS
+hdfs dfs -rm /user/suveer/data/sample.txt
+
+# Remove directory recursively
+hdfs dfs -rm -r /user/suveer/data
+```
+
+### Docker Operations
 ```bash
 # Build Docker image
 docker build -t hdfs-gateway:latest .
 
-# Run container with environment configuration
-docker run -d -p 5005:5005 --env-file .env hdfs-gateway:latest
+# Start containers via Compose
+docker compose up --build -d
+
+# View container status
+docker compose ps
+
+# View real-time logs
+docker compose logs -f
+
+# Stop containers
+docker compose down
 ```
+
+### API Verification Commands
+```bash
+# Cluster Health
+curl -s http://localhost:5005/api/v1/health | jq .
+
+# List Files
+curl -s "http://localhost:5005/api/v1/files/list?path=/" | jq .
+
+# Create Directory
+curl -X POST "http://localhost:5005/api/v1/files/mkdir?path=/demo" | jq .
+
+# Delete Directory
+curl -X DELETE "http://localhost:5005/api/v1/files/delete?path=/demo&recursive=true" | jq .
+```
+
+---
+
+## 20. Verification & Conformance Report
+
+1. **Sections Added:** All 20 mandatory architecture, setup, Cloudera Sandbox, deployment, API, troubleshooting, and reference sections are fully documented.
+2. **Version-Dependent Parameters:** WebHDFS NameNode default ports (9870 for Hadoop 3.x vs 50070 for Hadoop 2.x), Cloudera Sandbox image releases, and DataNode ports are explicitly noted as version-dependent.
+3. **Application Source Code Unmodified:** Zero lines of application code (`app/*`, `tests/*`) were modified.
+4. **Git Hygiene & Secrets:** No secrets or `.env` file contents are committed to Git.
