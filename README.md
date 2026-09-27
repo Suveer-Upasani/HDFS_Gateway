@@ -26,6 +26,7 @@ An asynchronous REST API gateway and web management interface built with **FastA
 18. [Production & Deployment Notes](#18-production--deployment-notes)
 19. [Common Command Reference](#19-common-command-reference)
 20. [Verification & Conformance Report](#20-verification--conformance-report)
+21. [CI/CD Pipeline & GitHub Guardrails](#21-cicd-pipeline--github-guardrails)
 
 ---
 
@@ -1065,3 +1066,76 @@ curl -X DELETE "http://localhost:5005/api/v1/files/delete?path=/demo&recursive=t
 2. **Version-Dependent Parameters:** WebHDFS NameNode default ports (9870 for Hadoop 3.x vs 50070 for Hadoop 2.x), Cloudera Sandbox image releases, and DataNode ports are explicitly noted as version-dependent.
 3. **Application Source Code Unmodified:** Zero lines of application code (`app/*`, `tests/*`) were modified.
 4. **Git Hygiene & Secrets:** No secrets or `.env` file contents are committed to Git.
+
+---
+
+## 21. CI/CD Pipeline & GitHub Guardrails
+
+The repository includes a production-grade **GitHub Actions CI/CD Pipeline** defined in [`.github/workflows/ci.yml`](file:///Users/suveer/HDFS/.github/workflows/ci.yml) that automatically validates code quality, runtime compatibility, configuration integrity, security guardrails, and Docker builds on every push and pull request.
+
+```mermaid
+flowchart TD
+    A[Push / Pull Request to main] --> B[1. Checkout Repository]
+    B --> C[2. Setup Python 3.12 & Pip Cache]
+    C --> D[3. Verify Python 3.12.x Runtime]
+    D --> E[4. Install Dependencies & Verify Imports]
+    E --> F[5. Ruff Linter & Style Checks]
+    F --> G[6. Pytest Unit & Endpoint Suite]
+    G --> H[7. Config & Environment Key Integrity]
+    H --> I[8. Secrets & Key Scanner]
+    I --> J[9. Hadoop Internal Storage Guardrails]
+    J --> K[10. Docker & Compose Architecture Checks]
+    K --> L[11. Repository Hygiene & Artifact Checks]
+    L --> M[12. Production Docker Build Validation]
+    M --> N[CI Status: GREEN / PASSED]
+```
+
+### 🎯 What GitHub Actions Validates (12 Guardrails)
+
+| Step | Guardrail / Action | Failure Condition |
+| :--- | :--- | :--- |
+| **1. Checkout** | `actions/checkout@v4` | Git checkout failure. |
+| **2. Python 3.12 Setup** | `actions/setup-python@v5` with pip caching | Python runtime provisioning error. |
+| **3. Python Version Check** | Validates `python --version` outputs `Python 3.12.x` | Runtime is unexpectedly non-3.12. |
+| **4. Dependencies & Imports** | Installs `requirements-dev.txt` and tests module imports | Broken dependency resolution or missing module imports. |
+| **5. Ruff Linting** | Runs `ruff check .` | Unused imports, bad formatting, or syntax warnings. |
+| **6. Automated Tests** | Runs `pytest -q` | Any test failure or unhandled exception. |
+| **7. Configuration Integrity** | Verifies `.env.example` exists, contains all 9 required keys, and `.env` is uncommitted | Missing keys or tracked `.env`. |
+| **8. Secret & Key Scanning** | Scans Git index for private keys (`RSA`, `OPENSSH`, `EC`, `PGP`) and AWS key patterns | Accidental credential commits. |
+| **9. Hadoop Storage Protection** | Scans Git index for forbidden Hadoop runtime paths (`hadoopdata/`, `namenode/`, `datanode/`, `fsimage*`, `edits_*`, `*.block`) | Hadoop data directories tracked in repository. |
+| **10. Docker Architecture** | Inspects `Dockerfile` (no Hadoop installs, port 5005 exposed) and `docker-compose.yml` (`network_mode: host`, no Hadoop services) | Hadoop binaries containerized or host networking removed. |
+| **11. Repository Hygiene** | Scans for untracked build artifacts (`.pyc`, `__pycache__`, `.ruff_cache`, `.pytest_cache`, `.DS_Store`, `.venv`) | Build/cache artifacts tracked in Git. |
+| **12. Docker Build** | Executes `docker build -t hdfs-gateway-ci:latest .` | Container build or dependency failure. |
+
+### 🔒 Why Hadoop Is NOT Run Inside CI
+* **Hadoop is external infrastructure:** Running a full Hadoop cluster inside a transient GitHub runner would introduce unnecessary flakiness, memory bloat, and violate the core architecture rule.
+* **Separation of concerns:** GitHub CI validates the **FastAPI Gateway Application**, while the **Linux VM** validates live **WebHDFS integration against Apache Hadoop 3.4.2**.
+
+### 🛡️ Recommended GitHub Branch Protection Rules
+Repository administrators should configure the following branch protection settings in GitHub (**Settings → Branches → Branch protection rules → main**):
+1. **Require a pull request before merging:**
+   * Require at least 1 approving review.
+   * Dismiss stale pull request approvals when new commits are pushed.
+2. **Require status checks to pass before merging:**
+   * Select status check: `Build & Validate Gateway` (`ci.yml`).
+   * Require branches to be up to date before merging.
+3. **Do not allow bypassing the above settings:**
+   * Enforce restrictions for administrators and developers alike.
+
+### 🚀 Future Continuous Deployment (CD) Path
+Once secure credentials or GitHub runner agents are configured on the Linux machine, Continuous Deployment can be layered on top of the CI pipeline:
+
+```text
+GitHub Actions CI (PASS)
+          │
+          ▼
+GitHub Container Registry (GHCR)
+• Publish: ghcr.io/suveer-upasani/hdfs-gateway:latest
+          │
+          ▼
+Linux VM Host (CD Hook / Runner)
+• docker compose pull
+• docker compose up -d --remove-orphans
+• curl -f http://localhost:5005/api/v1/health
+```
+
