@@ -27,6 +27,7 @@ An asynchronous REST API gateway and web management interface built with **FastA
 19. [Common Command Reference](#19-common-command-reference)
 20. [Verification & Conformance Report](#20-verification--conformance-report)
 21. [CI/CD Pipeline & GitHub Guardrails](#21-cicd-pipeline--github-guardrails)
+22. [Real-Time Streaming Pipeline (v2 Architecture)](#22-real-time-streaming-pipeline-v2-architecture)
 
 ---
 
@@ -149,7 +150,8 @@ flowchart LR
 │   ├── main.py                     # FastAPI application, CORS middleware, Jinja2 template mounting
 │   ├── api/
 │   │   ├── __init__.py             # API package initializer
-│   │   └── endpoints.py            # REST API endpoints (/api/v1/health, list, upload, download, mkdir, delete)
+│   │   ├── endpoints.py            # REST API endpoints (/api/v1/health, list, upload, download, mkdir, delete)
+│   │   └── vision.py               # Real-time streaming API router (v2 scaffolding)
 │   ├── core/
 │   │   ├── __init__.py             # Core package initializer
 │   │   └── config.py               # Pydantic BaseSettings environment configuration loader
@@ -158,13 +160,29 @@ flowchart LR
 │   │   └── hdfs_service.py         # Async WebHDFS client communicating with Hadoop NameNode & DataNode
 │   └── templates/
 │       └── index.html              # Management UI dashboard with drag-and-drop upload & explorer
+├── vision_client/
+│   ├── __init__.py                 # Vision client package initializer
+│   ├── config.py                   # Pydantic settings for camera source, YOLO model, and Kafka broker
+│   ├── events.py                   # DetectionEvent schema and serialization data contract
+│   ├── camera.py                   # Cross-platform camera capture interface (Windows/macOS/Linux)
+│   ├── detector.py                 # YOLO inference engine scaffolding
+│   └── kafka_producer.py           # Kafka event publishing client scaffolding
+├── streaming/
+│   ├── kafka/
+│   │   └── README.md               # Kafka KRaft transport layer architecture & topic guides
+│   └── flink/
+│       ├── README.md               # Apache Flink stream processing cluster architecture
+│       └── jobs/
+│           └── README.md           # Upcoming Flink windowing & ingestion job definitions
 ├── tests/
 │   ├── __init__.py                 # Test package initializer
-│   └── test_health.py              # Asynchronous unit test suite using pytest & httpx.ASGITransport
+│   ├── test_health.py              # Asynchronous unit test suite for FastAPI Gateway endpoints
+│   └── test_vision_client.py       # Unit tests for vision client configs, event contracts, and interfaces
 ├── .env.example                    # Template environment variable configuration (safe to commit)
 ├── .gitignore                      # Git ignore rules for Python, caches, and environment files
 ├── Dockerfile                      # Production container image definition (Python 3.12-slim)
-├── docker-compose.yml              # Multi-container orchestration specification with host networking
+├── docker-compose.yml              # HDFS Gateway container orchestration with host networking
+├── docker-compose.streaming.yml    # Kafka (KRaft) and Apache Flink streaming infrastructure compose file
 ├── Makefile                        # Development and operational command shortcuts
 ├── requirements.txt                # Production application dependencies
 ├── requirements-dev.txt            # Development, linting, and testing dependencies
@@ -177,10 +195,18 @@ flowchart LR
 | :--- | :--- |
 | [`app/main.py`](file:///Users/suveer/HDFS/app/main.py) | Application root. Instantiates the FastAPI application, mounts templates and static files, configures CORS, and registers API routers. |
 | [`app/api/endpoints.py`](file:///Users/suveer/HDFS/app/api/endpoints.py) | Defines all HTTP endpoints under `/api/v1`. Validates incoming requests, sanitizes paths, and dispatches calls to the service layer. |
+| [`app/api/vision.py`](file:///Users/suveer/HDFS/app/api/vision.py) | Router scaffolding for future real-time streaming analytics and active camera status endpoints. |
 | [`app/core/config.py`](file:///Users/suveer/HDFS/app/core/config.py) | Pydantic `BaseSettings` class loading configuration from environment variables and `.env` files with strict typing and defaults. |
 | [`app/services/hdfs_service.py`](file:///Users/suveer/HDFS/app/services/hdfs_service.py) | Encapsulates all WebHDFS protocol mechanics: path sanitization, HTTP redirects (307), chunked streaming downloads, and error handling. |
 | [`app/templates/index.html`](file:///Users/suveer/HDFS/app/templates/index.html) | Single-page management UI with live cluster connectivity status, drag-and-drop upload, and folder navigation. |
+| [`vision_client/events.py`](file:///Users/suveer/HDFS/vision_client/events.py) | Structured typed Pydantic data contract (`DetectionEvent`) used across the edge client, Kafka, Flink, and FastAPI. |
+| [`vision_client/config.py`](file:///Users/suveer/HDFS/vision_client/config.py) | Edge vision settings for camera ID, video source, Kafka broker host, YOLO model weight path, and confidence threshold. |
+| [`vision_client/camera.py`](file:///Users/suveer/HDFS/vision_client/camera.py) | Abstract camera stream interface and OpenCV wrapper supporting cross-platform webcams, RTSP, and video files. |
+| [`vision_client/detector.py`](file:///Users/suveer/HDFS/vision_client/detector.py) | Abstract object detector interface and YOLO inference engine scaffolding. |
+| [`vision_client/kafka_producer.py`](file:///Users/suveer/HDFS/vision_client/kafka_producer.py) | Abstract event producer interface and Kafka JSON event publisher scaffolding. |
+| [`docker-compose.streaming.yml`](file:///Users/suveer/HDFS/docker-compose.streaming.yml) | Orchestrates single-node Kafka in KRaft mode and Apache Flink (JobManager + TaskManager) with conservative memory tuning. |
 | [`tests/test_health.py`](file:///Users/suveer/HDFS/tests/test_health.py) | Asynchronous test suite verifying dashboard rendering, health endpoint, directory listings, uploads, and path traversal security. |
+| [`tests/test_vision_client.py`](file:///Users/suveer/HDFS/tests/test_vision_client.py) | Unit tests verifying detection event validation, settings defaults, and vision client interfaces. |
 | [`Dockerfile`](file:///Users/suveer/HDFS/Dockerfile) | Multi-stage, security-hardened `python:3.12-slim` image configured with curl health checks and unbuffered logging. |
 | [`docker-compose.yml`](file:///Users/suveer/HDFS/docker-compose.yml) | Runs the gateway container using `network_mode: host` to directly bind to the host's Hadoop services. |
 | [`Makefile`](file:///Users/suveer/HDFS/Makefile) | Standard command shortcuts (`make dev`, `make run`, `make test`, `make docker-build`). |
@@ -1138,4 +1164,121 @@ Linux VM Host (CD Hook / Runner)
 • docker compose up -d --remove-orphans
 • curl -f http://localhost:5005/api/v1/health
 ```
+
+---
+
+## 22. Real-Time Streaming Pipeline (v2 Architecture)
+
+### 🎯 1. Why the Streaming Layer Is Being Added
+The v1.0.0 FastAPI HDFS Gateway provides a reliable REST interface for manual and batch file operations on Hadoop HDFS. However, modern edge AI workloads require processing high-frequency continuous telemetry — such as computer vision detection events — in sub-second timeframes while maintaining long-term historical auditability.
+
+The **v2 Real-Time Streaming Pipeline** extends the gateway into an enterprise end-to-end data pipeline: capturing edge camera feeds, performing real-time object detection (YOLO), publishing lightweight event telemetry to **Apache Kafka**, processing streaming metrics in **Apache Flink**, persisting historical data to **HDFS**, and serving live metrics via **FastAPI** and the web dashboard.
+
+---
+
+### 🏗️ 2. Complete Streaming Architecture
+
+```mermaid
+flowchart TD
+    subgraph Edge ["Edge Device (Windows / macOS / Linux)"]
+        Cam["Camera Feed (Webcam / RTSP)"]
+        YOLO["YOLO Object Detector (yolo11n.pt)"]
+        Producer["Kafka Event Producer"]
+        Cam --> YOLO --> Producer
+    end
+
+    subgraph Transport ["Event Transport Layer"]
+        Kafka[("Apache Kafka (KRaft Mode)\nTopic: vision-events\nPort: 9092")]
+    end
+
+    subgraph Processing ["Stream Processing Layer"]
+        Flink["Apache Flink Cluster\n(JobManager + TaskManager)\nWindow Aggregations & Analytics"]
+    end
+
+    subgraph Storage ["Distributed Storage Layer"]
+        HDFS[("Apache Hadoop HDFS 3.4.2\n• /user/suveer/vision/raw/\n• /user/suveer/vision/detections/\n• /user/suveer/vision/analytics/")]
+    end
+
+    subgraph Application ["Application & Presentation Layer"]
+        Gateway["FastAPI HDFS Gateway\n(Port 5005)"]
+        Dashboard["Live Web Dashboard UI\n(Real-Time Analytics)"]
+        Gateway --> Dashboard
+    end
+
+    Producer -->|"Structured JSON Events (TCP)"| Kafka
+    Kafka -->|"Stream Subscription"| Flink
+    Flink -->|"Batch Flush / Historical Parquet"| HDFS
+    Flink -->|"Processed Stream Telemetry"| Gateway
+```
+
+---
+
+### 🛡️ 3. Strict Separation of Architectural Responsibilities
+
+| Component | Layer | Primary Responsibility | Explicit Boundaries |
+| :--- | :--- | :--- | :--- |
+| **Vision Client** | Edge Client | Frame capture, YOLO inference, JSON event packaging. | **FastAPI does NOT handle camera video streams directly.** |
+| **Apache Kafka** | Transport | High-throughput, distributed event buffering. | **Raw video frames are NEVER transmitted across Kafka.** |
+| **Apache Flink** | Stream Engine | Stateful windowing, anomaly detection, rate analytics. | Consumes events and dispatches dual-path outputs. |
+| **Hadoop HDFS** | Historical Storage | Long-term data lake for raw and structured event archives. | **Hadoop remains external host infrastructure.** |
+| **FastAPI** | API Gateway | REST API query layer and live metrics aggregation. | Does not run YOLO models or heavy continuous consumers. |
+| **Web Dashboard** | UI | Real-time analytics charts and cluster management UI. | Consumes processed metrics from FastAPI. |
+
+---
+
+### 🚫 4. Why Raw Video Is NOT Sent Through Kafka
+1. **Network Saturation:** Streaming uncompressed 1080p video at 30 FPS consumes ~1.5 Gbps per camera. Even compressed H.264 streams create unnecessary broker memory and network pressure.
+2. **Compute Localization:** Edge devices (laptops, microcomputers) possess dedicated hardware (Metal, CUDA, CPU vector units) to run inference locally.
+3. **Optimized Payload:** By running YOLO inference at the edge, each detection translates into a **~150 byte JSON record** (`DetectionEvent`), reducing network and storage overhead by over **99.9%**.
+
+---
+
+### 💻 5. Cross-Platform Vision Client Design
+The vision client (`vision_client/`) is built without platform-specific lock-in and runs seamlessly across:
+* **macOS:** Apple Silicon acceleration via Metal Performance Shaders (MPS) and AVFoundation video capture.
+* **Windows:** DirectShow / Media Foundation webcam capture with optional CUDA inference.
+* **Linux:** Video4Linux (V4L2) webcam and RTSP network stream capture.
+
+---
+
+### 🗄️ 6. External Hadoop HDFS Persistence Namespace
+The existing **Apache Hadoop 3.4.2** installation on the host environment remains independent and untouched. Streaming events will be partitioned under application-level directories:
+
+```text
+/user/suveer/vision/
+├── raw/                      # Validated raw DetectionEvent streams (hourly buckets)
+├── detections/               # High-confidence object detection archives (daily buckets)
+└── analytics/                # Aggregated window rollups and trend metrics (daily buckets)
+```
+
+---
+
+### 📊 7. Current Project Status: BASIC SETUP ONLY
+> [!IMPORTANT]
+> The current codebase establishes the **architectural scaffolding, configuration interfaces, typed data contracts, and Docker Compose definitions**. Full YOLO camera capture, Kafka event ingestion, and Flink streaming jobs will be implemented in subsequent phases.
+
+---
+
+### 🗺️ 8. Phased Implementation Roadmap
+
+* [x] **Phase 1: Foundation & Scaffolding (Current)**
+  * Structured `DetectionEvent` contract with Pydantic validation.
+  * Modular `vision_client` interfaces (`camera.py`, `detector.py`, `kafka_producer.py`, `config.py`).
+  * `docker-compose.streaming.yml` for single-node Kafka (KRaft) and Apache Flink with conservative memory bounds.
+  * FastAPI placeholder router (`app/api/vision.py`).
+  * Unit test suite for vision schemas and settings.
+* [ ] **Phase 2: Edge Vision & YOLO Inference Pipeline**
+  * Live webcam capture and frame acquisition loop.
+  * YOLO model weight downloading and real-time bounding box extraction.
+  * Event rate limiting and confidence filtering.
+* [ ] **Phase 3: Kafka Producer & Topic Orchestration**
+  * Asynchronous Kafka event publishing with retry logic.
+  * Safe automated topic management for `vision-events`.
+* [ ] **Phase 4: Apache Flink Real-Time Processing**
+  * Stateful tumbling (1-min) and sliding (5-min) window aggregations.
+  * Rolling HDFS Sink for partitioned historical persistence.
+* [ ] **Phase 5: Real-Time API & Downstream Sinks**
+  * FastAPI endpoints for live metrics, active cameras, and historical window queries.
+* [ ] **Phase 6: Live Web Dashboard & Visualizations**
+  * Interactive UI components displaying real-time detection counters, alert notifications, and HDFS archive browser.
 
