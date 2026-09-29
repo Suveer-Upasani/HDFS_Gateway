@@ -44,7 +44,10 @@ services:
     restart: "no"
 
   flink-jobmanager:
-    image: flink:1.18.1-scala_2.12-java11
+    build:
+      context: .
+      dockerfile: streaming/flink/Dockerfile
+    image: flink-vision:1.18.1-kafka
     container_name: flink-jobmanager
     ports:
       - "8081:8081"
@@ -60,7 +63,10 @@ services:
     restart: unless-stopped
 
   flink-taskmanager:
-    image: flink:1.18.1-scala_2.12-java11
+    build:
+      context: .
+      dockerfile: streaming/flink/Dockerfile
+    image: flink-vision:1.18.1-kafka
     container_name: flink-taskmanager
     depends_on:
       - flink-jobmanager

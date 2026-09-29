@@ -1,6 +1,6 @@
 # 🌊 Apache Flink Streaming Engine (v2)
 
-This directory contains configuration, architecture notes, and deployment definitions for **Apache Flink** in the real-time computer vision streaming pipeline.
+This directory contains configuration, Dockerfile definitions, architecture notes, and deployment instructions for **Apache Flink** in the real-time computer vision streaming pipeline.
 
 ---
 
@@ -23,6 +23,7 @@ Apache Flink acts as the low-latency, stateful distributed stream processor. It 
 │  │ JobManager (Port 8081)    │    │ TaskManager (Slots: 2)   │  │
 │  │ • Cluster coordination    │    │ • 10s Window Aggregations│  │
 │  │ • Checkpoint coordinator  │    │ • State management       │  │
+│  │ • Kafka SQL Connector     │    │ • Kafka SQL Connector    │  │
 │  └───────────────────────────┘    └────────────┬─────────────┘  │
 └────────────────────────────────────────────────┼────────────────┘
                          ┌───────────────────────┴───────────────────────┐
@@ -35,6 +36,15 @@ Apache Flink acts as the low-latency, stateful distributed stream processor. It 
      │ /user/suveer/vision/analytics/        │       │ • Real-time traffic analytics         │
      └───────────────────────────────────────┘       └───────────────────────────────────────┘
 ```
+
+---
+
+## 📦 Flink Container & Kafka SQL Connector
+
+The Flink services (`flink-jobmanager` and `flink-taskmanager`) build from [`streaming/flink/Dockerfile`](file:///Users/suveer/HDFS/streaming/flink/Dockerfile):
+- **Base Image:** `flink:1.18.1-scala_2.12-java11`
+- **Installed Connector:** `flink-sql-connector-kafka:3.0.2-1.18` installed into `/opt/flink/lib/`
+- **Job Scripts Mount:** `./streaming/flink/jobs` mounted to `/opt/flink/jobs`
 
 ---
 
@@ -59,8 +69,8 @@ Kafka and Flink services are defined in `docker-compose.streaming.yml`:
 # Start Kafka (KRaft mode with persistent volume) & topic initializer
 docker compose -f docker-compose.streaming.yml up -d kafka init-kafka
 
-# Start Flink cluster (JobManager + TaskManager)
-docker compose -f docker-compose.streaming.yml up -d flink-jobmanager flink-taskmanager
+# Build and start Flink cluster with Kafka connector (JobManager + TaskManager)
+docker compose -f docker-compose.streaming.yml up -d --build flink-jobmanager flink-taskmanager
 
 # Access Flink Web Dashboard
 open http://localhost:8081
