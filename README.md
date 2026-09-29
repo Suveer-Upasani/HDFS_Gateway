@@ -172,6 +172,7 @@ flowchart LR
 │   ├── kafka/
 │   │   └── README.md               # Kafka KRaft transport layer architecture, persistent volume, & topic guides
 │   └── flink/
+│       ├── Dockerfile              # Flink 1.18.1 container image with Kafka SQL connector JAR
 │       ├── README.md               # Apache Flink stream processing cluster architecture & management
 │       └── jobs/
 │           ├── __init__.py         # Flink streaming jobs package initializer
@@ -211,6 +212,7 @@ flowchart LR
 | [`vision_client/kafka_producer.py`](file:///Users/suveer/HDFS/vision_client/kafka_producer.py) | Kafka JSON event publisher transmitting structured `DetectionEvent` records to Kafka topics. |
 | [`vision_client/runner.py`](file:///Users/suveer/HDFS/vision_client/runner.py) | Application runner orchestrating real-time camera capture, YOLO detection, and Kafka streaming with graceful shutdown. |
 | [`docker-compose.streaming.yml`](file:///Users/suveer/HDFS/docker-compose.streaming.yml) | Orchestrates Kafka in KRaft mode with persistent volume storage (`kafka_data`) and Apache Flink (JobManager + TaskManager). |
+| [`streaming/flink/Dockerfile`](file:///Users/suveer/HDFS/streaming/flink/Dockerfile) | Production Flink 1.18.1 container image bundling the official `flink-sql-connector-kafka:3.0.2-1.18` JAR. |
 | [`streaming/flink/jobs/object_counting_job.py`](file:///Users/suveer/HDFS/streaming/flink/jobs/object_counting_job.py) | Real-time streaming consumer computing event-time 10-second tumbling window object aggregations from Kafka. |
 | [`streaming/flink/jobs/window_aggregator.py`](file:///Users/suveer/HDFS/streaming/flink/jobs/window_aggregator.py) | Pure Python event-time window aggregation engine with watermark tracking and JSON serialization. |
 | [`tests/test_health.py`](file:///Users/suveer/HDFS/tests/test_health.py) | Asynchronous test suite verifying dashboard rendering, health endpoint, directory listings, uploads, and path traversal security. |
