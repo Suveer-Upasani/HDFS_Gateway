@@ -18,6 +18,7 @@ Kafka serves as the high-throughput, decoupled event streaming backbone between 
 ┌───────────────────────────┐
 │ Apache Kafka (KRaft Mode) │
 │ Topic: vision-events      │
+│ Persistent: kafka_data    │
 └─────────────┬─────────────┘
               │ Subscribed Streams
               ▼
@@ -37,7 +38,11 @@ Kafka serves as the high-throughput, decoupled event streaming backbone between 
 2. **KRaft Mode (No ZooKeeper):**
    * Kafka is configured in modern **KRaft (Kafka Raft)** consensus mode, eliminating the operational complexity and memory footprint of a separate ZooKeeper cluster.
 
-3. **External LAN Connectivity (Configurable Advertised Listener):**
+3. **Persistent Docker Volume Storage:**
+   * Kafka broker logs and metadata are stored in a dedicated named Docker volume `kafka_data` mapped to `/tmp/kraft-combined-logs`.
+   * Data and committed offset state survive container restarts without data loss.
+
+4. **External LAN Connectivity (Configurable Advertised Listener):**
    * The Kafka broker runs inside Docker on the Linux VM host.
    * To allow external edge devices (such as a laptop webcam running on macOS or Windows on the LAN) to publish events, Kafka exposes a configurable advertised listener:
      ```bash
@@ -71,7 +76,7 @@ Kafka is started via `docker-compose.streaming.yml`:
 
 ```bash
 # Start Kafka & Streaming infrastructure
-docker compose -f docker-compose.streaming.yml up -d kafka
+docker compose -f docker-compose.streaming.yml up -d kafka init-kafka
 
 # Inspect topic creation
 docker compose -f docker-compose.streaming.yml exec kafka \
