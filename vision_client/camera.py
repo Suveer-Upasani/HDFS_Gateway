@@ -36,12 +36,25 @@ class OpenCVCameraStream(BaseCameraStream):
     """
 
     def __init__(self, source: str | int = 0) -> None:
-        self.source: int | str = int(source) if str(source).isdigit() else source
+        if isinstance(source, int):
+            self.source: int | str = source
+        else:
+            self.source = int(source) if str(source).strip().isdigit() else str(source).strip()
         self._cap: Any | None = None
 
     def open(self) -> bool:
+        """Open OpenCV video capture device or stream.
+
+        Returns:
+            True if capture device opened successfully, False otherwise.
+
+        Raises:
+            ImportError: If opencv-python is not installed.
+            RuntimeError: If device initialization encounters an unexpected error.
+        """
         try:
             import cv2
+
             self._cap = cv2.VideoCapture(self.source)
             return bool(self._cap.isOpened())
         except ImportError as err:
@@ -49,16 +62,23 @@ class OpenCVCameraStream(BaseCameraStream):
                 "OpenCV (opencv-python) is required for live camera capture. "
                 "Install it with `pip install opencv-python`."
             ) from err
+        except Exception as err:
+            raise RuntimeError(
+                f"Failed to initialize video capture device for source '{self.source}': {err}"
+            ) from err
 
     def read(self) -> tuple[bool, Any | None]:
+        """Read the next frame from the camera stream."""
         if self._cap is None or not self._cap.isOpened():
             return False, None
         return self._cap.read()
 
     def release(self) -> None:
+        """Cleanly release OpenCV VideoCapture resources."""
         if self._cap is not None:
             self._cap.release()
             self._cap = None
 
     def is_opened(self) -> bool:
+        """Check if camera device is currently active and opened."""
         return self._cap is not None and bool(self._cap.isOpened())

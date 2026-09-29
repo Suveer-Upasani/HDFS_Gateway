@@ -165,8 +165,9 @@ flowchart LR
 │   ├── config.py                   # Pydantic settings for camera source, YOLO model, and Kafka broker
 │   ├── events.py                   # DetectionEvent schema and serialization data contract
 │   ├── camera.py                   # Cross-platform camera capture interface (Windows/macOS/Linux)
-│   ├── detector.py                 # YOLO inference engine scaffolding
-│   └── kafka_producer.py           # Kafka event publishing client scaffolding
+│   ├── detector.py                 # Ultralytics YOLO inference engine & detection parser
+│   ├── kafka_producer.py           # Kafka JSON event publishing client
+│   └── runner.py                   # Real-time capture, inference, and streaming orchestration runner
 ├── streaming/
 │   ├── kafka/
 │   │   └── README.md               # Kafka KRaft transport layer architecture & topic guides
@@ -202,8 +203,9 @@ flowchart LR
 | [`vision_client/events.py`](file:///Users/suveer/HDFS/vision_client/events.py) | Structured typed Pydantic data contract (`DetectionEvent`) used across the edge client, Kafka, Flink, and FastAPI. |
 | [`vision_client/config.py`](file:///Users/suveer/HDFS/vision_client/config.py) | Edge vision settings for camera ID, video source, Kafka broker host, YOLO model weight path, and confidence threshold. |
 | [`vision_client/camera.py`](file:///Users/suveer/HDFS/vision_client/camera.py) | Abstract camera stream interface and OpenCV wrapper supporting cross-platform webcams, RTSP, and video files. |
-| [`vision_client/detector.py`](file:///Users/suveer/HDFS/vision_client/detector.py) | Abstract object detector interface and YOLO inference engine scaffolding. |
-| [`vision_client/kafka_producer.py`](file:///Users/suveer/HDFS/vision_client/kafka_producer.py) | Abstract event producer interface and Kafka JSON event publisher scaffolding. |
+| [`vision_client/detector.py`](file:///Users/suveer/HDFS/vision_client/detector.py) | Ultralytics YOLO detector extracting bounding boxes, class labels, and confidence metrics into structured detection events. |
+| [`vision_client/kafka_producer.py`](file:///Users/suveer/HDFS/vision_client/kafka_producer.py) | Kafka JSON event publisher transmitting structured `DetectionEvent` records to Kafka topics. |
+| [`vision_client/runner.py`](file:///Users/suveer/HDFS/vision_client/runner.py) | Application runner orchestrating real-time camera capture, YOLO detection, and Kafka streaming with graceful shutdown. |
 | [`docker-compose.streaming.yml`](file:///Users/suveer/HDFS/docker-compose.streaming.yml) | Orchestrates single-node Kafka in KRaft mode and Apache Flink (JobManager + TaskManager) with conservative memory tuning. |
 | [`tests/test_health.py`](file:///Users/suveer/HDFS/tests/test_health.py) | Asynchronous test suite verifying dashboard rendering, health endpoint, directory listings, uploads, and path traversal security. |
 | [`tests/test_vision_client.py`](file:///Users/suveer/HDFS/tests/test_vision_client.py) | Unit tests verifying detection event validation, settings defaults, and vision client interfaces. |
@@ -1253,32 +1255,86 @@ The existing **Apache Hadoop 3.4.2** installation on the host environment remain
 
 ---
 
-### 📊 7. Current Project Status: BASIC SETUP ONLY
-> [!IMPORTANT]
-> The current codebase establishes the **architectural scaffolding, configuration interfaces, typed data contracts, and Docker Compose definitions**. Full YOLO camera capture, Kafka event ingestion, and Flink streaming jobs will be implemented in subsequent phases.
+### 📹 7. Real-Time Vision Client Execution
+
+#### Architecture Overview
+```text
+Camera (Webcam / RTSP / Video)
+        ↓
+     OpenCV
+        ↓
+  Ultralytics YOLO (yolo11n.pt)
+        ↓
+  DetectionEvent (Pydantic)
+        ↓
+  Kafka Event Producer
+        ↓
+ Kafka Topic (vision-events)
+```
+
+#### Key Architecture Principles:
+- **Client Execution:** The vision client runs locally on the user's host machine (macOS / Windows / Linux).
+- **Remote / Distributed Transport:** Kafka runs on the Linux infrastructure (e.g., Linux VM / cluster at `192.168.1.7:9092` or local Docker).
+- **Zero Raw Video Over Wire:** Raw video frames are processed entirely at the edge with OpenCV & YOLO; **raw video is NEVER transmitted over Kafka**.
+- **Structured JSON Only:** Only typed `DetectionEvent` JSON payloads containing detection metadata (`timestamp`, `camera_id`, `object`, `confidence`, `bbox`) are published.
+
+#### Environment Configuration (`.env`)
+Configure the vision client by updating or creating a local `.env` file.
+
+**Example Configuration for macOS Client -> Linux VM Kafka:**
+```env
+# Kafka Transport Layer (reachable IP of Linux Kafka VM or cluster)
+KAFKA_BOOTSTRAP_SERVERS=192.168.1.7:9092
+KAFKA_TOPIC=vision-events
+
+# Camera & Detection Settings
+CAMERA_ID=camera-01
+CAMERA_SOURCE=0
+YOLO_MODEL=yolo11n.pt
+YOLO_CONFIDENCE=0.5
+```
+
+> [!NOTE]
+> - A **physical webcam** (or valid RTSP URL / test video file) is required for live execution.
+> - Default `CAMERA_SOURCE=0` attaches to the primary built-in or USB webcam.
+> - On macOS, grant terminal/IDE camera permissions when prompted.
+
+#### Running the Real-Time Vision Client
+Execute the runner module using Python:
+
+```bash
+python -m vision_client.runner
+```
+
+**Console Output Highlights:**
+- Reports when Kafka connection is established.
+- Confirms YOLO model weights initialization.
+- Reports when video capture device opens.
+- Provides periodic rolling statistics (FPS, total frames, detections published) without flooding the console.
+- Traps `Ctrl+C` (SIGINT/SIGTERM) to gracefully flush buffers, release camera hardware, and cleanly disconnect from Kafka.
 
 ---
 
 ### 🗺️ 8. Phased Implementation Roadmap
 
-* [x] **Phase 1: Foundation & Scaffolding (Current)**
+* [x] **Phase 1: Foundation & Scaffolding**
   * Structured `DetectionEvent` contract with Pydantic validation.
   * Modular `vision_client` interfaces (`camera.py`, `detector.py`, `kafka_producer.py`, `config.py`).
   * `docker-compose.streaming.yml` for single-node Kafka (KRaft) and Apache Flink with conservative memory bounds.
   * FastAPI placeholder router (`app/api/vision.py`).
   * Unit test suite for vision schemas and settings.
-* [ ] **Phase 2: Edge Vision & YOLO Inference Pipeline**
-  * Live webcam capture and frame acquisition loop.
-  * YOLO model weight downloading and real-time bounding box extraction.
-  * Event rate limiting and confidence filtering.
-* [ ] **Phase 3: Kafka Producer & Topic Orchestration**
-  * Asynchronous Kafka event publishing with retry logic.
-  * Safe automated topic management for `vision-events`.
-* [ ] **Phase 4: Apache Flink Real-Time Processing**
+* [x] **Phase 2: Edge Vision & YOLO Inference Pipeline (Completed)**
+  * Cross-platform camera capture stream abstraction (`OpenCVCameraStream`).
+  * Real-time YOLO object detection and bounding box parser (`YOLODetector`).
+  * Kafka detection event streaming client (`KafkaVisionProducer`).
+  * Integrated pipeline runner (`vision_client.runner`) with graceful shutdown and telemetry logging.
+  * Comprehensive unit test suite with 100% mock isolation.
+* [ ] **Phase 3: Apache Flink Real-Time Processing**
   * Stateful tumbling (1-min) and sliding (5-min) window aggregations.
-  * Rolling HDFS Sink for partitioned historical persistence.
-* [ ] **Phase 5: Real-Time API & Downstream Sinks**
+  * Rolling HDFS Sink for partitioned historical persistence (`/user/suveer/vision/`).
+* [ ] **Phase 4: Real-Time API & Downstream Sinks**
   * FastAPI endpoints for live metrics, active cameras, and historical window queries.
-* [ ] **Phase 6: Live Web Dashboard & Visualizations**
+* [ ] **Phase 5: Live Web Dashboard & Visualizations**
   * Interactive UI components displaying real-time detection counters, alert notifications, and HDFS archive browser.
+
 
