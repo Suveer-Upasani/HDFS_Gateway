@@ -36,6 +36,12 @@ class KafkaVisionProducer(BaseEventProducer):
         self._producer: Any | None = None
 
     def connect(self) -> None:
+        """Connect to Kafka broker cluster.
+
+        Raises:
+            ImportError: If kafka client library is missing.
+            RuntimeError: If connection to Kafka broker fails.
+        """
         try:
             from kafka import KafkaProducer
 
@@ -48,8 +54,13 @@ class KafkaVisionProducer(BaseEventProducer):
                 "A Kafka client library (kafka-python or kafka-python-ng) is required. "
                 "Install it with `pip install kafka-python-ng`."
             ) from err
+        except Exception as err:
+            raise RuntimeError(
+                f"Failed to connect to Kafka brokers at '{self.bootstrap_servers}': {err}"
+            ) from err
 
     def send_event(self, event: DetectionEvent) -> bool:
+        """Publish a detection event to the configured Kafka topic."""
         if self._producer is None:
             raise RuntimeError("Producer is not connected. Call connect() first.")
         payload = event.model_dump()
@@ -57,6 +68,7 @@ class KafkaVisionProducer(BaseEventProducer):
         return True
 
     def close(self) -> None:
+        """Flush remaining events and cleanly disconnect from Kafka."""
         if self._producer is not None:
             self._producer.flush()
             self._producer.close()

@@ -44,10 +44,15 @@ htmlcov/
 *.log
 logs/
 
+# ML Models & Ultralytics
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+yolo*.pt
+runs/
+
 # OS specific
 .DS_Store
 Thumbs.db
-
-# Python cache
-__pycache__/
-*.py[cod]
