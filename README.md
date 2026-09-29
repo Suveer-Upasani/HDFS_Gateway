@@ -170,15 +170,19 @@ flowchart LR
 │   └── runner.py                   # Real-time capture, inference, and streaming orchestration runner
 ├── streaming/
 │   ├── kafka/
-│   │   └── README.md               # Kafka KRaft transport layer architecture & topic guides
+│   │   └── README.md               # Kafka KRaft transport layer architecture, persistent volume, & topic guides
 │   └── flink/
-│       ├── README.md               # Apache Flink stream processing cluster architecture
+│       ├── README.md               # Apache Flink stream processing cluster architecture & management
 │       └── jobs/
-│           └── README.md           # Upcoming Flink windowing & ingestion job definitions
+│           ├── __init__.py         # Flink streaming jobs package initializer
+│           ├── object_counting_job.py # Real-time 10-second tumbling window object counting job
+│           ├── window_aggregator.py   # Event-time tumbling window aggregation engine
+│           └── README.md           # Flink job specifications, execution commands, & schema contracts
 ├── tests/
 │   ├── __init__.py                 # Test package initializer
 │   ├── test_health.py              # Asynchronous unit test suite for FastAPI Gateway endpoints
-│   └── test_vision_client.py       # Unit tests for vision client configs, event contracts, and interfaces
+│   ├── test_vision_client.py       # Unit tests for vision client configs, event contracts, and interfaces
+│   └── test_flink_jobs.py          # Unit tests for Flink window aggregations, timestamps, and watermarks
 ├── .env.example                    # Template environment variable configuration (safe to commit)
 ├── .gitignore                      # Git ignore rules for Python, caches, and environment files
 ├── Dockerfile                      # Production container image definition (Python 3.12-slim)
@@ -206,9 +210,12 @@ flowchart LR
 | [`vision_client/detector.py`](file:///Users/suveer/HDFS/vision_client/detector.py) | Ultralytics YOLO detector extracting bounding boxes, class labels, and confidence metrics into structured detection events. |
 | [`vision_client/kafka_producer.py`](file:///Users/suveer/HDFS/vision_client/kafka_producer.py) | Kafka JSON event publisher transmitting structured `DetectionEvent` records to Kafka topics. |
 | [`vision_client/runner.py`](file:///Users/suveer/HDFS/vision_client/runner.py) | Application runner orchestrating real-time camera capture, YOLO detection, and Kafka streaming with graceful shutdown. |
-| [`docker-compose.streaming.yml`](file:///Users/suveer/HDFS/docker-compose.streaming.yml) | Orchestrates single-node Kafka in KRaft mode and Apache Flink (JobManager + TaskManager) with conservative memory tuning. |
+| [`docker-compose.streaming.yml`](file:///Users/suveer/HDFS/docker-compose.streaming.yml) | Orchestrates Kafka in KRaft mode with persistent volume storage (`kafka_data`) and Apache Flink (JobManager + TaskManager). |
+| [`streaming/flink/jobs/object_counting_job.py`](file:///Users/suveer/HDFS/streaming/flink/jobs/object_counting_job.py) | Real-time streaming consumer computing event-time 10-second tumbling window object aggregations from Kafka. |
+| [`streaming/flink/jobs/window_aggregator.py`](file:///Users/suveer/HDFS/streaming/flink/jobs/window_aggregator.py) | Pure Python event-time window aggregation engine with watermark tracking and JSON serialization. |
 | [`tests/test_health.py`](file:///Users/suveer/HDFS/tests/test_health.py) | Asynchronous test suite verifying dashboard rendering, health endpoint, directory listings, uploads, and path traversal security. |
 | [`tests/test_vision_client.py`](file:///Users/suveer/HDFS/tests/test_vision_client.py) | Unit tests verifying detection event validation, settings defaults, and vision client interfaces. |
+| [`tests/test_flink_jobs.py`](file:///Users/suveer/HDFS/tests/test_flink_jobs.py) | Unit tests verifying Flink timestamp parsing, 10s window bounds calculation, watermark emission, and event aggregation. |
 | [`Dockerfile`](file:///Users/suveer/HDFS/Dockerfile) | Multi-stage, security-hardened `python:3.12-slim` image configured with curl health checks and unbuffered logging. |
 | [`docker-compose.yml`](file:///Users/suveer/HDFS/docker-compose.yml) | Runs the gateway container using `network_mode: host` to directly bind to the host's Hadoop services. |
 | [`Makefile`](file:///Users/suveer/HDFS/Makefile) | Standard command shortcuts (`make dev`, `make run`, `make test`, `make docker-build`). |
@@ -1315,7 +1322,82 @@ python -m vision_client.runner
 
 ---
 
-### 🗺️ 8. Phased Implementation Roadmap
+### 🌊 8. Apache Flink Real-Time Streaming Analytics
+
+#### Architecture & Layer Separation
+
+The real-time streaming pipeline maintains clean separation between transport, processing, storage, and presentation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. Event Transport: Apache Kafka                                        │
+│    • High-throughput decoupled event buffer (:9092)                     │
+│    • Topic: vision-events (3 partitions)                                │
+│    • Persistent KRaft storage (named volume: kafka_data)                │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ Subscribed JSON DetectionEvent Stream
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 2. Stream Processing: Apache Flink                                      │
+│    • Stateful event-time windowing engine                               │
+│    • 10-Second Tumbling Window Object Counting Job                      │
+│    • Grouped by detected object class (and optionally camera_id)        │
+└──────────────────┬───────────────────────────────────┬──────────────────┘
+                   │                                   │
+                   ▼ (Future Phase)                    ▼ (Future Phase)
+┌────────────────────────────────────┐ ┌──────────────────────────────────┐
+│ 3. Historical Storage: Hadoop HDFS │ │ 4. Application Layer: FastAPI    │
+│    • /user/suveer/vision/raw/      │ │    • Real-time REST endpoints    │
+│    • /user/suveer/vision/analytics/│ │    • Live Web Dashboard UI       │
+└────────────────────────────────────┘ └──────────────────────────────────┘
+```
+
+#### Starting Kafka & Flink Infrastructure
+Kafka (KRaft mode with persistent volume storage) and the Flink cluster are defined in `docker-compose.streaming.yml`:
+
+```bash
+# 1. Start Kafka with persistent volume & auto-topic initializer
+docker compose -f docker-compose.streaming.yml up -d kafka init-kafka
+
+# 2. Start Apache Flink cluster (JobManager + TaskManager)
+docker compose -f docker-compose.streaming.yml up -d flink-jobmanager flink-taskmanager
+
+# 3. Verify services are running
+docker compose -f docker-compose.streaming.yml ps
+
+# 4. Access Flink Web Dashboard UI
+open http://localhost:8081
+```
+
+#### Running the Flink 10-Second Windowed Object Counting Job
+The object counting job consumes `DetectionEvent` JSON records from the `vision-events` topic, aggregates occurrences per object class across 10-second event-time tumbling windows with a 2-second watermark delay, and prints structured analytics output to stdout:
+
+```bash
+# Run against local/VM Kafka broker (e.g. inside Kali Linux VM)
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers localhost:9092 --topic vision-events
+
+# Run from external host pointing to Kali Linux VM
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers 192.168.1.7:9092 --topic vision-events
+
+# Run with optional camera grouping and read from earliest offset
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers localhost:9092 --group-by-camera --from-beginning
+```
+
+#### How the 10-Second Window Works
+- **Event-Time Processing:** Timestamps from incoming detections (`timestamp: "2026-09-29T21:52:23.450Z"`) are parsed and aligned to epoch boundaries: `[21:52:20, 21:52:30)`.
+- **Watermark Tracking:** An event-time watermark advances with incoming events (with a 2-second allowance for out-of-order delivery).
+- **Window Finalization:** As the watermark passes the window end boundary (`21:52:30`), the completed window counts are finalized and emitted.
+
+#### Example Output:
+```json
+{"window_start": "2026-09-29T21:52:20Z", "window_end": "2026-09-29T21:52:30Z", "object": "person", "count": 287}
+{"window_start": "2026-09-29T21:52:20Z", "window_end": "2026-09-29T21:52:30Z", "object": "car", "count": 14}
+{"window_start": "2026-09-29T21:52:20Z", "window_end": "2026-09-29T21:52:30Z", "object": "laptop", "count": 3}
+```
+
+---
+
+### 🗺️ 9. Phased Implementation Roadmap
 
 * [x] **Phase 1: Foundation & Scaffolding**
   * Structured `DetectionEvent` contract with Pydantic validation.
@@ -1323,18 +1405,23 @@ python -m vision_client.runner
   * `docker-compose.streaming.yml` for single-node Kafka (KRaft) and Apache Flink with conservative memory bounds.
   * FastAPI placeholder router (`app/api/vision.py`).
   * Unit test suite for vision schemas and settings.
-* [x] **Phase 2: Edge Vision & YOLO Inference Pipeline (Completed)**
+* [x] **Phase 2: Edge Vision & YOLO Inference Pipeline**
   * Cross-platform camera capture stream abstraction (`OpenCVCameraStream`).
   * Real-time YOLO object detection and bounding box parser (`YOLODetector`).
   * Kafka detection event streaming client (`KafkaVisionProducer`).
   * Integrated pipeline runner (`vision_client.runner`) with graceful shutdown and telemetry logging.
   * Comprehensive unit test suite with 100% mock isolation.
-* [ ] **Phase 3: Apache Flink Real-Time Processing**
-  * Stateful tumbling (1-min) and sliding (5-min) window aggregations.
-  * Rolling HDFS Sink for partitioned historical persistence (`/user/suveer/vision/`).
-* [ ] **Phase 4: Real-Time API & Downstream Sinks**
+* [x] **Phase 3: Persistent Kafka Storage & Flink Window Analytics (Completed)**
+  * Named Docker volume `kafka_data` persisting KRaft broker logs at `/tmp/kraft-combined-logs`.
+  * Real-time 10-second tumbling window object counting job (`object_counting_job.py`).
+  * Pure event-time window aggregation engine with watermark tracking (`window_aggregator.py`).
+  * Unit test suite for timestamp parsing, window boundaries, and window emission (`test_flink_jobs.py`).
+* [ ] **Phase 4: Apache Flink HDFS Rolling Sink**
+  * Rolling HDFS Sink for partitioned historical persistence (`/user/suveer/vision/raw/` and `/user/suveer/vision/analytics/`).
+* [ ] **Phase 5: Real-Time API & Downstream Sinks**
   * FastAPI endpoints for live metrics, active cameras, and historical window queries.
-* [ ] **Phase 5: Live Web Dashboard & Visualizations**
+* [ ] **Phase 6: Live Web Dashboard & Visualizations**
   * Interactive UI components displaying real-time detection counters, alert notifications, and HDFS archive browser.
+
 
 

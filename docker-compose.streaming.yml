@@ -20,6 +20,8 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
     restart: unless-stopped
 
   init-kafka:
@@ -53,6 +55,8 @@ services:
         jobmanager.rpc.address: flink-jobmanager
         jobmanager.memory.process.size: 1024m
         parallelism.default: 1
+    volumes:
+      - ./streaming/flink/jobs:/opt/flink/jobs
     restart: unless-stopped
 
   flink-taskmanager:
@@ -68,4 +72,9 @@ services:
         taskmanager.memory.process.size: 1024m
         taskmanager.numberOfTaskSlots: 2
         parallelism.default: 1
+    volumes:
+      - ./streaming/flink/jobs:/opt/flink/jobs
     restart: unless-stopped
+
+volumes:
+  kafka_data:

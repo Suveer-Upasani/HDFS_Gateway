@@ -1,39 +1,89 @@
-# 🛠️ Flink Streaming Jobs (v2 Scaffolding)
+# 🛠️ Flink Streaming Jobs (v2)
 
-This directory contains the specifications and upcoming job definitions for Apache Flink stream processing tasks.
-
----
-
-## 📋 Planned Processing Jobs
-
-### 1. Ingestion & Validation Job (`IngestionJob`)
-* **Source:** Consumes JSON payloads from Kafka topic `vision-events`.
-* **Validation:** Validates timestamp formats, bounding box boundaries, and minimum confidence thresholds.
-* **Sink (HDFS Raw):** Persists all raw validated events to `/user/suveer/vision/raw/` in hourly partition buckets (`YYYY/MM/DD/HH`).
-
-### 2. Detection Analytics & Aggregation Job (`AnalyticsJob`)
-* **Keying:** Keyed by `camera_id` and detected `object` class.
-* **Windowing:**
-  * Tumbling 1-minute window: Total object occurrences per camera.
-  * Sliding 5-minute window: Traffic density & movement trends.
-* **Sinks:**
-  * **HDFS Analytics:** Writes structured Parquet/JSON aggregated metrics to `/user/suveer/vision/analytics/`.
-  * **Real-time Downstream:** Pushes immediate aggregated metrics for FastAPI endpoint consumption.
+This directory contains streaming analytics jobs that process real-time `DetectionEvent` streams from Kafka.
 
 ---
 
-## 🗄️ Target HDFS Directory Structure
+## 📊 Real-Time Windowed Object Counting Job (`object_counting_job.py`)
 
-All historical streaming data will be partitioned under the dedicated application user namespace:
+### Architecture & Operation
+The windowed object counting job consumes structured `DetectionEvent` messages from the `vision-events` Kafka topic, performs event-time 10-second tumbling window aggregations grouped by detected object class (e.g., `person`, `car`, `laptop`), and outputs structured JSON records to stdout/logging.
 
 ```text
-/user/suveer/vision/
-├── raw/                      # Unmodified, validated detection events
-│   └── YYYY/MM/DD/HH/
-├── detections/               # Filtered, high-confidence detection records
-│   └── YYYY/MM/DD/
-└── analytics/                # Windowed rollups, aggregations, and traffic metrics
-    └── YYYY/MM/DD/
+Kafka Topic (vision-events)
+          ↓
+  [DetectionEvent JSON]
+          ↓
+  TumblingWindowAggregator (10s Tumbling Windows, 2s Watermark Delay)
+          ↓
+  [Windowed Analytics Record]
+          ↓
+  Standard Output / Flink Logging
 ```
 
-> **Note:** The existing Hadoop 3.4.2 installation on the host machine remains external infrastructure and is not modified.
+### Schema & Aggregation Contract
+
+#### Input Event (`DetectionEvent`):
+```json
+{
+  "timestamp": "2026-09-29T21:52:23.450Z",
+  "camera_id": "camera-01",
+  "object": "person",
+  "confidence": 0.94,
+  "bbox": [312, 145, 521, 612]
+}
+```
+
+#### Output Record (`WindowedObjectCount`):
+```json
+{
+  "window_start": "2026-09-29T21:52:20Z",
+  "window_end": "2026-09-29T21:52:30Z",
+  "object": "person",
+  "count": 287
+}
+```
+
+When camera grouping is enabled (`--group-by-camera`), the output includes `camera_id`:
+```json
+{
+  "window_start": "2026-09-29T21:52:20Z",
+  "window_end": "2026-09-29T21:52:30Z",
+  "camera_id": "camera-01",
+  "object": "person",
+  "count": 287
+}
+```
+
+---
+
+## 🚀 Execution Guide
+
+### 1. Running on Host / Linux VM (Direct Streaming Engine)
+From the repository root:
+
+```bash
+# Connect to local/VM Kafka broker (e.g., inside Kali Linux VM)
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers localhost:9092 --topic vision-events
+
+# Connect to remote Kafka broker from external host
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers 192.168.1.7:9092 --topic vision-events
+
+# Optional: Group by camera ID and read from earliest offset
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers localhost:9092 --group-by-camera --from-beginning
+```
+
+### 2. Running inside Docker Network
+When running inside the Docker network (e.g. within a container on the streaming network):
+
+```bash
+python -m streaming.flink.jobs.object_counting_job --bootstrap-servers kafka:9092 --topic vision-events
+```
+
+---
+
+## 🗄️ Planned Downstream Sinks
+
+In subsequent development phases, outputs from this windowing engine will be dispatched to:
+1. **Hadoop HDFS (Historical Storage):** `/user/suveer/vision/analytics/` in daily Parquet/JSON partitions.
+2. **FastAPI & Live Dashboard:** In-memory rolling metrics buffer for sub-second REST/WebSocket visualization.
