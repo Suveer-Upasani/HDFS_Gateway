@@ -1,8 +1,10 @@
-"""Real-time Windowed Object Counting Streaming Job.
+"""Real-time Windowed Object Counting Consumer (Client & Test Harness).
 
-Consumes DetectionEvent JSON records from Kafka topic `vision-events`, validates schemas,
-computes event-time 10-second tumbling window aggregations grouped by object class,
-and emits structured analytics records to stdout/logging.
+NOTE:
+- For production Flink cluster execution, use `streaming/flink/jobs/vision_analytics.sql`
+  submitted to the Flink JobManager via SQL Client.
+- This Python module provides a client-side test consumer and local emulation engine using
+  kafka-python and TumblingWindowAggregator.
 """
 
 import argparse

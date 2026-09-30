@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 
+from app.api.vision import router as vision_router
 from app.services.hdfs_service import (
     hdfs_service,
     sanitize_filename,
@@ -14,6 +15,7 @@ from app.services.hdfs_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["HDFS Gateway Operations"])
+router.include_router(vision_router)
 
 
 @router.get("/health", summary="Hadoop WebHDFS Connectivity Check")

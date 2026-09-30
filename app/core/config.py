@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     HDFS_DEFAULT_DIR: str = "/"
     HDFS_TIMEOUT_SECONDS: float = 30.0
 
+    # Kafka & Flink Streaming Configuration
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_VISION_TOPIC: str = "vision-events"
+    FLINK_JOBMANAGER_URL: str = "http://localhost:8081"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
