@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from streaming.flink.jobs.window_aggregator import (
     TumblingWindowAggregator,
@@ -214,3 +215,61 @@ def test_aggregator_with_detection_event_instance():
     assert len(results) == 1
     assert results[0].object == "bottle"
     assert results[0].count == 1
+
+
+# ==========================================
+# 4. Flink SQL Definition Tests (vision_analytics.sql)
+# ==========================================
+
+
+def test_vision_analytics_sql_file_exists():
+    """Verify that the production Flink SQL script exists and is non-empty."""
+    sql_path = Path(__file__).resolve().parent.parent / "streaming" / "flink" / "jobs" / "vision_analytics.sql"
+    assert sql_path.exists(), f"Expected SQL file at {sql_path}"
+    content = sql_path.read_text(encoding="utf-8")
+    assert len(content.strip()) > 0
+
+
+def test_vision_analytics_sql_kafka_source_and_topic():
+    """Verify Kafka source configuration in vision_analytics.sql."""
+    sql_path = Path(__file__).resolve().parent.parent / "streaming" / "flink" / "jobs" / "vision_analytics.sql"
+    content = sql_path.read_text(encoding="utf-8")
+
+    assert "'connector' = 'kafka'" in content
+    assert "'topic' = 'vision-events'" in content
+    assert "'properties.bootstrap.servers' = 'kafka:9092'" in content
+    assert "'format' = 'json'" in content
+
+
+def test_vision_analytics_sql_event_time_and_watermark():
+    """Verify event-time derivation and 2-second watermark definition."""
+    sql_path = Path(__file__).resolve().parent.parent / "streaming" / "flink" / "jobs" / "vision_analytics.sql"
+    content = sql_path.read_text(encoding="utf-8")
+
+    assert "`event_time` AS TO_TIMESTAMP" in content
+    assert "WATERMARK FOR `event_time` AS `event_time` - INTERVAL '2' SECOND" in content
+
+
+def test_vision_analytics_sql_windowing_and_aggregation():
+    """Verify 10-second TUMBLE windowing and GROUP BY object."""
+    sql_path = Path(__file__).resolve().parent.parent / "streaming" / "flink" / "jobs" / "vision_analytics.sql"
+    content = sql_path.read_text(encoding="utf-8")
+
+    assert "INTERVAL '10' SECOND" in content
+    assert "TUMBLE(" in content
+    assert "GROUP BY" in content
+    assert "`object`" in content
+    assert "COUNT(*) AS `count`" in content
+
+
+def test_vision_analytics_sql_sink_definition():
+    """Verify development print sink table schema."""
+    sql_path = Path(__file__).resolve().parent.parent / "streaming" / "flink" / "jobs" / "vision_analytics.sql"
+    content = sql_path.read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS window_analytics_sink" in content
+    assert "window_start TIMESTAMP(3)" in content
+    assert "window_end TIMESTAMP(3)" in content
+    assert "`count` BIGINT" in content
+    assert "'connector' = 'print'" in content
+
