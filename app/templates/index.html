@@ -380,6 +380,40 @@
             color: #fca5a5;
         }
 
+        .nav-tabs {
+            display: flex;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 4px;
+        }
+
+        .nav-tab {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.4rem 0.9rem;
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .nav-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .nav-tab.active {
+            background: #0284c7;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+        }
+
         footer {
             border-top: 1px solid var(--border-color);
             padding: 1.5rem 2rem;
@@ -398,12 +432,29 @@
                 <h1>{{ app_name }}</h1>
             </div>
         </div>
+
+        <!-- Center Unified Navigation Tabs -->
+        <nav class="nav-tabs" aria-label="Main Navigation">
+            <a href="/" class="nav-tab active" id="nav-hdfs">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                HDFS Files
+            </a>
+            <a href="/dashboard" class="nav-tab" id="nav-vision">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Vision Monitor
+            </a>
+        </nav>
+
         <div class="header-meta">
             <span class="badge {% if hdfs_status.status == 'connected' %}badge-status-connected{% else %}badge-status-disconnected{% endif %}" id="status-badge">
                 <span class="status-dot"></span>
                 <span id="status-text">{{ hdfs_status.status }}</span>
             </span>
-            <a href="/docs" class="api-link" target="_blank">API Swagger Docs ↗</a>
+            <a href="/docs" class="api-link" target="_blank">API Docs ↗</a>
         </div>
     </header>
 

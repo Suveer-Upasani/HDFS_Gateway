@@ -90,7 +90,7 @@ def test_detection_event_validation_errors():
 
 def test_vision_client_settings_defaults():
     """Verify default values in VisionClientSettings."""
-    settings = VisionClientSettings()
+    settings = VisionClientSettings(_env_file=None)
     assert settings.CAMERA_ID == "camera-01"
     assert settings.KAFKA_TOPIC == "vision-events"
     assert settings.YOLO_MODEL == "yolo11n.pt"
